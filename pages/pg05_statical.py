@@ -1,134 +1,14 @@
 """
-統計学的精度管理　確認・台帳作成
+# -*- coding: utf-8 -*-
+# 統計学的精度管理　確認・台帳作成
 """
 
 import calendar
 import sqlite3
-from io import BytesIO
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-
-
-# データベースからQCデータを読み込む
-@st.cache_data  # Streamlitのキャッシュ機能を使用してデータの読み込みを高速化
-def load_qc_data(implementation_date_time, conn):
-    """データベースからQCデータを読み込んで処理する"""
-    qc_data_query = f"""
-    SELECT `Date_Time`, `Batch`, `Item_Code`, `Model`, `type`, `Lot Number`,
-           `SD_Conversion`, `Ct`, `judgment`, `Error_type`, `Violated_rule`
-    FROM table_qc_mulch_rule
-    WHERE datetime(`Date_Time`) <= datetime('{implementation_date_time}')
-    ORDER BY `Date_Time` DESC
-    """
-    df_qc_query = pd.read_sql_query(qc_data_query, conn)
-    return df_qc_query.sort_values(["Date_Time", "Batch"], ascending=True)
-
-
-# 基本統計量を計算する関数
-@st.cache_data
-def calculate_statistics(df_qc_data):
-    """Calculate basic statistics for QC data"""
-    # マルチインデックスを作成 - CtとSD変換値それぞれに対して N,平均,標準偏差,変動係数を設定
-    column_names = pd.MultiIndex.from_product(
-        [["Ct", "SD_Conversion"], ["N", "MEAN", "STD", "CV"]]
-    )
-
-    # ロット番号でグループ化してCtとSD変換値の基本統計量を計算
-    grouped = df_qc_data.groupby("Lot Number")[["Ct", "SD_Conversion"]]
-    # データ数、平均値、標準偏差を一括計算
-    agg_stats = grouped.agg(["count", "mean", "std"])
-
-    # 変動係数(CV)を計算 = 標準偏差/平均値
-    cv = agg_stats.xs("std", axis=1, level=1) / agg_stats.xs("mean",
-                                                             axis=1,
-                                                             level=1)
-
-    # すべての統計量を1つのデータフレームに結合
-    stats = pd.concat(
-        [
-            agg_stats.xs("count", axis=1, level=1),  # データ数(N)
-            agg_stats.xs("mean", axis=1, level=1),  # 平均値(MEAN)
-            agg_stats.xs("std", axis=1, level=1),  # 標準偏差(STD)
-            cv,  # 変動係数(CV)
-        ],
-        axis=1,
-        keys=["N", "MEAN", "STD", "CV"],
-    )
-
-    # 小数点以下3桁に丸める
-    stats = stats.round(3)
-    # 列名を設定
-    stats.columns = column_names
-
-    # 工程能力指数(Cp)の計算
-    # UCL(上限管理限界)とLCL(下限管理限界)の差を計算してDataFrameを作成
-    ucl_lcl = pd.DataFrame(
-        {
-            # Ct値の管理幅を計算
-            "Ct": (df_qc_data["UCL 1"].mean() - df_qc_data["LCL 1"].mean()),
-            # SD変換値の管理幅を計算
-            "SD_Conversion": (
-                df_qc_data["UCL 2"].mean() - df_qc_data["LCL 2"].mean()),
-        }
-    )
-
-    # 標準偏差の値を取得
-    std_values = stats.xs("STD", axis=1, level=1)  # 統計量から標準偏差の列を抽出
-
-    # Cp値を計算 (管理幅 / (6 × 標準偏差))して小数点以下3桁に丸める
-    cp_values = (ucl_lcl / (std_values * 6)).round(3)
-
-    # 計算したCp値を統計量のデータフレームに追加
-    # Ct値のCp値を追加
-    stats[("Ct", "Cp")] = cp_values["Ct"]
-    # SD変換値のCp値を追加
-    stats[("SD_Conversion", "Cp")] = cp_values["SD_Conversion"]
-
-    # 完成した統計量のデータフレームを返す
-    return stats
-
-
-# Excelレポートを作成する関数
-# キャッシュ機能を使用して高速化
-@st.cache_data
-def create_excel_report(dfs):
-    """QCデータのExcelレポートを作成"""
-    # バイトストリームを作成してメモリ上にExcelファイルを保存
-    excel_buffer = BytesIO()
-
-    # ExcelWriterでファイルを作成
-    with pd.ExcelWriter(excel_buffer, engine="openpyxl", mode="w") as writer:
-        # 各データフレームの書き込み設定をリストで定義
-        write_tasks = [
-            (
-                dfs["basic_stats"],
-                "Sheet1",
-                25,
-                1,
-            ),  # 基本統計量を25行目、B列から書き込み
-            (dfs["qc_results"], "Sheet1", 7, 0),  # QC結果を7行目、A列から書き込み
-            (
-                dfs["abnormal_records"],
-                "Sheet1",
-                32,
-                0,
-            ),  # 異常記録を32行目、A列から書き込み
-            (
-                dfs["measurement_status"],
-                "Sheet1",
-                38,
-                1,
-            ),  # 測定状況を38行目、B列から書き込み
-        ]
-
-        # 各データフレームをExcelファイルに書き込み
-        for df, sheet, row, col in write_tasks:
-            df.to_excel(writer, sheet_name=sheet, startrow=row, startcol=col)
-
-    # 作成したExcelバッファを返す
-    return excel_buffer
 
 
 # メインの処理を行う関数
@@ -144,50 +24,128 @@ def main():
     year = st.sidebar.text_input("西暦", placeholder="西暦をここに入力")
     month = st.sidebar.text_input("月", placeholder="月（MM）をここに入力")
 
-    # 年月が入力された場合の処理
-    if year and month:
-        # 指定された年月の最終日を取得
+    # データ表示ボタンを追加
+    show_data_button = st.sidebar.button("データ表示")
+
+    # 年月とボタンが両方入力された場合の処理
+    if show_data_button and year and month:
         _, last_day = calendar.monthrange(int(year), int(month))
-        implementation_date_time = f"{year}-{month.zfill(2)}-{last_day}"
+        start_date = f"{year}-{month.zfill(2)}-01"
+        end_date = f"{year}-{month.zfill(2)}-{last_day}"
 
-        # データベースに接続してデータを取得
         with sqlite3.connect("db_folder/qc_data_base.db", timeout=30) as conn:
-            conn.execute(
-                "PRAGMA journal_mode=WAL"
-            )  # データベースの書き込みモードを最適化
-            conn.execute(
-                "PRAGMA cache_size=-2000"
-            )  # キャッシュサイズを増やして処理を高速化
+            query = """
+                SELECT
+                  f.File_Name,
+                  f.Date_Time AS '日時',
+                  f.Batch AS 'バッチ',
+                  f.Item_Code AS "項目コード",
+                  f.Model AS "機種",
+                  n.Type AS "Type",
+                  n.Dye AS "Dye",
+                  n.Lot_Number AS "Lot Number",
+                  n.Verdict AS "NC判定",
+                  p.Ct AS "PC/Ct値",
+                  p.SD_Conversion AS "PC/SD換算",
+                  m.judgment AS "PC/判定",
+                  m.Violated_rule AS "違反ルール",
+                  a.Cause AS "原因",
+                  a.CAPA AS "CAPA"
+                FROM table_qc_file_info f
+                LEFT JOIN table_qc_nc n
+                  ON f.File_Name = n.File_Name
+                LEFT JOIN table_qc_pc p
+                  ON n.File_Name = p.File_Name AND n.Dye = p.Dye
+                LEFT JOIN table_qc_multi_rule m
+                  ON p.File_Name = m.File_Name AND p.Type = m.Type
+                LEFT JOIN table_qc_status_log s
+                  ON f.File_Name = s.File_Name
+                LEFT JOIN table_qc_act_log a
+                  ON p.File_Name = a.File_Name AND p.Type = a.Type
+                WHERE
+                  strftime('%Y-%m-%d', replace(f.Date_Time, '/', '-')) >= ?
+                  AND strftime('%Y-%m-%d', replace(f.Date_Time, '/', '-')) <= ?
+                ORDER BY
+                  f.Item_Code,
+                  n.Type,
+                  f.Date_Time DESC
+                """
+            df = pd.read_sql_query(query, conn, params=(start_date, end_date))
+            df = df.drop_duplicates()
 
-            # QCデータを読み込み、基本統計量を計算
-            try:
-                df_qc_data = load_qc_data(implementation_date_time, conn)
-                basic_stats = calculate_statistics(df_qc_data)
-            except (ValueError, TypeError) as e:
-                st.error(f"統計処理中にエラーが発生しました: {str(e)}")
-                return
-
-            # Type毎のデータを表示
-            display_type_data(conn)
-
-        # Excelレポートを作成
-        excel_buffer = create_excel_report(
-            {
-                "basic_stats": basic_stats,  # 基本統計量
-                "qc_results": df_qc_data,  # QC結果
-                "abnormal_records": pd.DataFrame(),  # 異常記録（空のデータフレーム）
-                "measurement_status": pd.DataFrame(),  # 測定状況（空のデータフレーム）
-            }
+        # measurement_item.xlsxを読み込み、項目コードで結合
+        df_item = pd.read_excel("data/master/measurement_item.xlsx")
+        df = pd.merge(
+            df, df_item, left_on="項目コード", right_on="Item_Code", how="left"
         )
 
-        # Excelファイルのダウンロードボタンを表示
-        st.download_button(
-            label="Excelファイルをダウンロード",
-            data=excel_buffer,
-            file_name=f"統計学的精度管理レポート_{year}_{month}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.\
-                            spreadsheetml.sheet",
-        )
+        st.markdown(f"### {year}年{month}月：データ一覧")
+        if not df.empty:
+            grouped = df.groupby(["Measurement_Item", "Type"])
+            for (item_name, type_val), group in grouped:
+                st.markdown(f"#### 項目名: {item_name} / Type: {type_val}")
+                display_cols = [
+                    "機種",
+                    "Type",
+                    "Dye",
+                    "Lot Number",
+                    "NC判定",
+                    "PC/Ct値",
+                    "PC/SD換算",
+                    "PC/判定",
+                    "違反ルール",
+                    "原因",
+                    "CAPA",
+                ]
+                display_cols = [col for col in display_cols if col in group.columns]
+                st.dataframe(group[display_cols], use_container_width=True)
+        else:
+            st.info("該当期間のデータがありません。")
+
+        # SD換算のグラフをTypeごとにまとめて1つのグラフで表示
+        if not df.empty and "PC/SD換算" in df.columns and "Type" in df.columns:
+            st.markdown("### ｘ管理図（SD換算）")
+            df_sorted = df.sort_values("日時")
+            fig = px.line(
+                df_sorted,
+                x="日時",
+                y="PC/SD換算",
+                color="Type",
+                title="SD換算の推移（Typeごと）",
+            )
+            fig.update_yaxes(range=[-5, 5])
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("SD換算データがありません。")
+
+        # QCチェックログの期間に該当するレコードを別テーブルで表示
+        with sqlite3.connect("db_folder/qc_data_base.db", timeout=30) as conn:
+            checklog_query = (
+                "SELECT "
+                "  check_date AS '確認日', "
+                "  measurement AS '責任区分', "
+                "  measurer AS '担当者名', "
+                "  Type, "
+                "  check_result AS 'チェック', "
+                "  comment AS 'コメント' "
+                "FROM table_qc_check_log "
+                "WHERE "
+                "  (strftime('%Y-%m-%d', start_date) <= ? "
+                "   AND strftime('%Y-%m-%d', end_date) >= ?) "
+                "ORDER BY start_date DESC"
+            )
+            df_checklog = pd.read_sql_query(
+                checklog_query, conn, params=(start_date, end_date)
+            )
+
+        st.markdown("### QCチェックログ")
+        if not df_checklog.empty:
+            grouped = df_checklog.groupby("Type")
+            for type_val, group in grouped:
+                st.markdown(f"#### Type: {type_val}")
+                st.dataframe(group, use_container_width=True)
+        else:
+            st.info("該当期間のQCチェックログはありません。")
 
 
 # メイン関数を実行
@@ -214,8 +172,12 @@ def display_type_data(conn):
         st.subheader(f"Type: {type_name}")
 
         # グラフを描画
+        plot_title = f"{type_name}の違反ルール"
         fig = px.line(
-            group, x="Date_Time", y="Violated_rule", title=f"{type_name}の違反ルール"
+            group,
+            x="Date_Time",
+            y="Violated_rule",
+            title=plot_title,
         )
         st.plotly_chart(fig)
 
