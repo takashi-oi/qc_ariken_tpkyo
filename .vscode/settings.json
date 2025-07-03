@@ -1,0 +1,42 @@
+{
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "explicit"
+  },
+  "python.defaultInterpreterPath": "./.venv/bin/python",
+  "python.linting.enabled": true,
+  "python.linting.flake8Enabled": true,
+  "python.formatting.provider": "black",
+  "python.sortImports.args": ["--profile", "black"],
+  "files.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/.DS_Store": true,
+    "**/*.log": true,
+    "**/*.db": true,
+    "**/*.sqlite": true,
+    "**/*.sqlite3": true
+  },
+  "search.exclude": {
+    "**/__pycache__": true,
+    "**/*.pyc": true,
+    "**/.venv": true,
+    "**/node_modules": true
+  },
+  "cline.enabled": true,
+  "cline.provider": "ollama",
+  "cline.baseUrl": "http://localhost:11434",
+  "cline.model": "codellama:7b",
+  "cline.temperature": 0.3,
+  "cline.maxTokens": 2048,
+  "cline.timeout": 30000,
+  "cline.retryAttempts": 3,
+  "cline.autoComplete": true,
+  "cline.codeGeneration": true,
+  "cline.refactoring": true,
+  "cline.debugging": true,
+  "cline.testing": true,
+  "cline.documentation": true,
+  "cline.showSuggestions": true,
+  "cline.inlineSuggestions": true
+} 

@@ -1,0 +1,105 @@
+{
+  "version": "1.0",
+  "models": {
+    "ollama": {
+      "provider": "ollama",
+      "endpoint": "http://localhost:11434",
+      "models": [
+        "llama3.2:3b",
+        "llama3.2:7b",
+        "llama3.2:70b",
+        "codellama:7b",
+        "codellama:13b",
+        "codellama:34b",
+        "mistral:7b",
+        "mistral:7b-instruct",
+        "qwen2.5:7b",
+        "qwen2.5:14b",
+        "qwen2.5:32b",
+        "gemma2:2b",
+        "gemma2:9b",
+        "phi3:3.8b",
+        "phi3:14b"
+      ],
+      "default_model": "llama3.2:7b",
+      "temperature": 0.7,
+      "max_tokens": 4096,
+      "top_p": 0.9,
+      "frequency_penalty": 0.0,
+      "presence_penalty": 0.0
+    }
+  },
+  "settings": {
+    "language": "ja",
+    "theme": "dark",
+    "auto_save": true,
+    "show_line_numbers": true,
+    "tab_size": 2,
+    "insert_spaces": true,
+    "word_wrap": true,
+    "rulers": [80, 120],
+    "format_on_save": true,
+    "lint_on_save": true
+  },
+  "shortcuts": {
+    "generate_code": "cmd+shift+g",
+    "explain_code": "cmd+shift+e",
+    "refactor_code": "cmd+shift+r",
+    "debug_code": "cmd+shift+d",
+    "test_code": "cmd+shift+t"
+  },
+  "prompts": {
+    "code_generation": "以下の要件に基づいてコードを生成してください：\n\n{requirements}\n\n使用言語: {language}\n\nコードは以下の点に注意してください：\n- 可読性と保守性\n- エラーハンドリング\n- パフォーマンス\n- セキュリティ\n- ベストプラクティスに従う",
+    "code_explanation": "以下のコードの動作を詳しく説明してください：\n\n{code}\n\n以下の点について説明してください：\n- コードの目的\n- 各関数・メソッドの役割\n- データの流れ\n- 重要なロジック\n- 潜在的な問題点",
+    "code_refactoring": "以下のコードをリファクタリングしてください：\n\n{code}\n\n以下の点を改善してください：\n- コードの可読性\n- パフォーマンス\n- 保守性\n- DRY原則の適用\n- 適切な命名規則",
+    "debug_assistance": "以下のコードのデバッグを支援してください：\n\n{code}\n\nエラー: {error}\n\n以下の点について分析してください：\n- エラーの原因\n- 解決方法\n- 予防策\n- デバッグのヒント",
+    "test_generation": "以下のコードのテストを生成してください：\n\n{code}\n\n以下の点を含むテストを作成してください：\n- 正常系のテスト\n- 異常系のテスト\n- エッジケース\n- モックの使用\n- テストカバレッジ"
+  },
+  "file_types": {
+    "python": {
+      "extensions": [".py"],
+      "formatter": "black",
+      "linter": "flake8",
+      "test_framework": "pytest"
+    },
+    "javascript": {
+      "extensions": [".js", ".jsx"],
+      "formatter": "prettier",
+      "linter": "eslint",
+      "test_framework": "jest"
+    },
+    "typescript": {
+      "extensions": [".ts", ".tsx"],
+      "formatter": "prettier",
+      "linter": "eslint",
+      "test_framework": "jest"
+    },
+    "html": {
+      "extensions": [".html", ".htm"],
+      "formatter": "prettier"
+    },
+    "css": {
+      "extensions": [".css", ".scss", ".sass"],
+      "formatter": "prettier"
+    },
+    "sql": {
+      "extensions": [".sql"],
+      "formatter": "sqlformat"
+    }
+  },
+  "project_specific": {
+    "qc_ariken_tokyo": {
+      "description": "有研東京検査所 精度管理システム",
+      "framework": "streamlit",
+      "database": "sqlite",
+      "language": "python",
+      "conventions": {
+        "naming": "snake_case",
+        "docstring_format": "google",
+        "max_line_length": 79,
+        "import_order": ["standard_library", "third_party", "local"]
+      },
+      "context": "このプロジェクトは検査測定データの管理と分析を行うStreamlitアプリケーションです。SQLiteデータベースを使用し、QC（品質管理）データの記録、分析、レポート生成機能を提供します。"
+    }
+  }
+} 

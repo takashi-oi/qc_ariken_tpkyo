@@ -1,0 +1,136 @@
+import sqlite3
+import pandas as pd
+import streamlit as st
+import logging
+from typing import List, Dict, Optional, Tuple
+from dataclasses import dataclass
+from contextlib import contextmanager
+from datetime import date
+
+# ログの設定
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DatabaseConfig:
+    """データベース構成設定"""
+    path: str = 'db_folder/qc_data_base.db'
+    max_attempts: int = 3
+
+
+class DatabaseManager:
+    """データベース管理クラス"""
+    def __init__(self, config: DatabaseConfig = DatabaseConfig()):
+        self.config = config
+    from typing import Generator  # Generatorをインポート
+
+    @contextmanager
+    def get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+        """データベース接続のコンテキスト管理"""
+        for attempt in range(self.config.max_attempts):
+            try:
+                conn = sqlite3.connect(self.config.path)
+                yield conn
+                break
+            except sqlite3.Error as e:
+                logger.error(f"Connection attempt {attempt + 1} failed: {e}")
+                if attempt == self.config.max_attempts - 1:
+                    st.error("データベースに接続できません")
+                    raise
+            finally:
+                if 'conn' in locals():
+                    conn.close()
+
+    def fetch_data(self, days_back: int = 30) -> pd.DataFrame:
+        """QCデータを取得"""
+        query = """
+            SELECT Date_Time AS date_time, Type, SD_Conversion AS sd_conversion
+            FROM table_qc_pc
+            WHERE datetime(Date_Time) >= datetime('now', '-? days')
+            ORDER BY Date_Time DESC
+        """
+        try:
+            with self.get_connection() as conn:
+                return pd.read_sql_query(query, conn, params=(days_back,))
+        except Exception as e:
+            logger.error(f"データ取得エラー: {e}")
+            st.error("データの取得に失敗しました")
+            return pd.DataFrame()
+
+
+class QCCheckUI:
+    """QCチェックのUI管理"""
+    def __init__(self, db_manager: DatabaseManager):
+        self.db_manager = db_manager
+
+    def init_session_state(self) -> None:
+        """セッション状態を初期化"""
+        if 'check_data' not in st.session_state:
+            data = self.db_manager.fetch_data()
+            st.session_state['check_data'] = data if not data.empty else None
+
+    @staticmethod
+    def render_sidebar() -> Tuple[date, str, str]:
+        """サイドバーのUIを描画"""
+        with st.sidebar:
+            date_time = st.date_input("日付を選択", value=pd.Timestamp.now().date())
+            measurement = st.selectbox("責任区分", ["Precision Manager", "Quality Manager"])
+            measurer = st.text_input("測定者名").strip()
+        return date_time, measurement, measurer
+
+    def render_charts(self) -> List[Dict[str, str]]:
+        """チャートを描画し、QCログを生成"""
+        data = st.session_state.get('check_data')
+        if data is None:
+            st.warning("データがありません")
+            return []
+
+        check_logs = []
+        for type_name, group in data.groupby('Type'):
+            with st.expander(f"Type: {type_name}", expanded=True):
+                st.line_chart(group, x='date_time', y='sd_conversion')
+
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    comment_check = st.radio(
+                        "QCコメント", ["問題なし", "問題あり"], key=f"comment_check_{type_name}"
+                    )
+                with col2:
+                    comment = st.text_input("コメント", key=f"comment_{type_name}").strip()
+
+                check_logs.append({'Type': type_name, 'comment_check': comment_check, 'comment': comment or "なし"})
+
+        return check_logs
+
+
+def main():
+    """メインエントリポイント"""
+    st.set_page_config(page_title="QC管理チェック", layout="wide")
+    st.title("品質管理状態確認")
+
+    try:
+        db_manager = DatabaseManager()
+        ui = QCCheckUI(db_manager)
+
+        ui.init_session_state()
+        date_time, measurement, measurer = ui.render_sidebar()
+
+        if not measurer:
+            st.warning("測定者名を入力してください")
+            return
+
+        check_logs = ui.render_charts()
+        if check_logs:
+            st.success("QCチェックログが生成されました")
+            # ここでログをデータベースに保存可能
+    except Exception as e:
+        logger.error(f"アプリケーションエラー: {e}")
+        st.error("重大なエラーが発生しました")
+
+
+if __name__ == "__main__":
+    main()

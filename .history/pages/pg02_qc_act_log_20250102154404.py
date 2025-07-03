@@ -64,7 +64,7 @@ def create_tables_if_not_exist():
 
     # QCルールテーブル
     create_cursor.execute("""
-        CREATE TABLE IF NOT EXISTS qc_mulch_rule (
+        CREATE TABLE IF NOT EXISTS qc_multi_rule (
             date TEXT,
             batch TEXT,
             item_code TEXT,
