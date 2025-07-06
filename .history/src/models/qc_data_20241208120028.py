@@ -1,3 +1,0 @@
-"""
-QC_Wsdtgard
-    """

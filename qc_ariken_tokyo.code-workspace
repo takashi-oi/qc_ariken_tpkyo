@@ -15,6 +15,9 @@
 			"6c90ca2ce3de"
 		],
 		"python.defaultInterpreterPath": "./.venv/bin/python",
-		"python.terminal.activateEnvironment": true
+		"python.terminal.activateEnvironment": true,
+		"cSpell.words": [
+			"yaxes"
+		]
 	}
 }

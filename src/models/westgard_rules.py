@@ -4,6 +4,7 @@ Westgardマルチルールのモデル
 
 # Standard library imports
 import sqlite3  # SQLiteデータベースを操作するためのライブラリをインポートします。
+from datetime import datetime  # 日付時刻処理のためのライブラリをインポートします。
 
 # 型ヒントを使用するための型をインポートします。
 from typing import Dict, List, Optional, Tuple, Union
@@ -214,23 +215,23 @@ class MultiRule:
             last_two = sd_conversions[-2:]
             results["2-2s"] = (
                 1
-                if (all(sd < -2 for sd in last_two) or
-                    all(sd > 2 for sd in last_two))
+                if (all(sd < -2 for sd in last_two) or all(
+                    sd > 2 for sd in last_two))
                 else 0
             )
 
         # 直近2点でのR-4sルールの評価
         if len(sd_conversions) >= 2:
             last_two = sd_conversions[-2:]
-            results["R-4s"] = 1 if (abs(last_two[0] - last_two[1]) > 4) else 0
+            results["R-4s"] = 1 if abs(last_two[0] - last_two[1]) > 4 else 0
 
         # 直近4点での4-1sルールの評価
         if len(sd_conversions) >= 4:
             last_four = sd_conversions[-4:]
             results["4-1s"] = (
                 1
-                if (all(sd < -1 for sd in last_four) or
-                    all(sd > 1 for sd in last_four))
+                if (all(sd < -1 for sd in last_four) or all(
+                    sd > 1 for sd in last_four))
                 else 0
             )
 
@@ -240,8 +241,8 @@ class MultiRule:
             results["8x"] = (
                 1
                 if (
-                    all(sd > 0 for sd in last_eight) or
-                    all(sd < 0 for sd in last_eight)
+                    all(sd > 0 for sd in last_eight) or all(
+                        sd < 0 for sd in last_eight)
                 )
                 else 0
             )
@@ -269,6 +270,26 @@ class MultiRule:
         lot = lot_number or ["-"] * len(qc_data)
         dyes = dye or ["-"] * len(qc_data)
 
+        # 日付順で最新のレコードを特定
+        # 日付をdatetimeオブジェクトに変換して比較
+
+        # 日付文字列をdatetimeオブジェクトに変換
+        date_objects = []
+        for date_str in date:
+            try:
+                date_obj = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                date_objects.append(date_obj)
+            except ValueError:
+                # 日付形式が異なる場合は現在時刻を使用
+                date_objects.append(datetime.now())
+
+        # 最新の日付のインデックスを取得
+        latest_date_index = date_objects.index(max(date_objects))
+
+        # デバッグ用：最新日付の情報を出力
+        print(f"最新日付のインデックス: {latest_date_index}")
+        print(f"最新日付: {date[latest_date_index]}")
+
         for i, (value,
                 sd_conv,
                 qc_type,
@@ -278,8 +299,7 @@ class MultiRule:
                 m,
                 d,
                 meas,
-                l
-                ) in enumerate(
+                l) in enumerate(
             zip(
                 qc_data,
                 sd_conversions,
@@ -308,60 +328,71 @@ class MultiRule:
                 "Error_type": "-",
                 "Type_error": "-",
                 "Violated_rule": "-",
+                "1-2s": 0,
+                "1-3s": 0,
+                "2-2s": 0,
+                "R-4s": 0,
+                "4-1s": 0,
+                "8x": 0,
             }
 
-            # 履歴データと現在のデータを組み合わせてルール評価
-            if historical_sd_conversions is not None:
-                # 履歴データ + 現在までのデータを使用
-                combined_sd = historical_sd_conversions + sd_conversions[
-                    : i + 1]
-            else:
-                # 現在のデータのみを使用
-                combined_sd = sd_conversions[: i + 1]
+            # 最新日付のレコードのみにWestgardルールの結果を反映
+            if i == latest_date_index:
+                print(f"判定結果を反映するレコード: インデックス {i}, 日付 {d}")
 
-            # Westgardルールの評価（履歴データを含む）
-            westgard_rules = self.evaluate_rules(combined_sd)
-
-            # Westgardルールの結果を追加
-            result.update(westgard_rules)
-
-            # タイプ固有のルールを適用
-            error_type, error_type_message = self.apply_type_specific_rules(
-                qc_type, sd_conv
-            )
-
-            # タイプ固有のエラーがある場合
-            if error_type:
-                result["Judgment"] = "Fail"
-                result["Type_error"] = error_type_message
-
-            # Westgardルールまたはタイプ固有のエラーがある場合
-            if any(westgard_rules.values()) or error_type:
-                result["Judgment"] = "Fail"
-                # 違反したルールを抽出
-                error_rules = [
-                    rule for rule, violated in
-                    westgard_rules.items() if violated
-                ]
-                if error_type:
-                    error_rules.append("Type_error")
-
-                # エラータイプを設定
-                if westgard_rules["1-3s"] or westgard_rules["R-4s"]:
-                    result["Error_type"] = "偶発誤差"
-                elif (
-                    westgard_rules["2-2s"]
-                    or westgard_rules["4-1s"]
-                    or westgard_rules["8x"]
-                ):
-                    result["Error_type"] = "系統誤差"
-                elif westgard_rules["1-2s"]:
-                    result["Error_type"] = "注意"
+                # 履歴データと現在のデータを組み合わせてルール評価
+                if historical_sd_conversions is not None:
+                    # 履歴データ + 現在のデータを使用
+                    combined_sd = historical_sd_conversions + sd_conversions
                 else:
-                    result["Error_type"] = "-"
+                    # 現在のデータのみを使用
+                    combined_sd = sd_conversions
 
-                # 違反したルールをカンマ区切りで結合
-                result["Violated_rule"] = ", ".join(error_rules)
+                # Westgardルールの評価（最新日付のレコードに対してのみ）
+                westgard_rules = self.evaluate_rules(combined_sd)
+
+                # Westgardルールの結果を更新
+                result.update(westgard_rules)
+
+                # タイプ固有のルールを適用
+                error_result = self.apply_type_specific_rules(qc_type, sd_conv)
+                error_type, error_type_message = error_result
+
+                # タイプ固有のエラーがある場合
+                if error_type:
+                    result["Judgment"] = "Fail"
+                    result["Type_error"] = error_type_message
+
+                # Westgardルールまたはタイプ固有のエラーがある場合
+                if any(westgard_rules.values()) or error_type:
+                    result["Judgment"] = "Fail"
+                    # 違反したルールを抽出
+                    error_rules = [
+                        rule for rule,
+                        violated in westgard_rules.items()
+                        if violated
+                    ]
+                    if error_type:
+                        error_rules.append("Type_error")
+
+                    # エラータイプを設定
+                    if westgard_rules["1-3s"] or westgard_rules["R-4s"]:
+                        result["Error_type"] = "偶発誤差"
+                    elif (
+                        westgard_rules["2-2s"]
+                        or westgard_rules["4-1s"]
+                        or westgard_rules["8x"]
+                    ):
+                        result["Error_type"] = "系統誤差"
+                    elif westgard_rules["1-2s"]:
+                        result["Error_type"] = "注意"
+                    else:
+                        result["Error_type"] = "-"
+
+                    # 違反したルールをカンマ区切りで結合
+                    result["Violated_rule"] = ", ".join(error_rules)
+            else:
+                print(f"判定結果を反映しないレコード: インデックス {i}, 日付 {d}")
 
             # 結果をリストに追加
             results.append(result)
@@ -503,8 +534,8 @@ def check_westgard_rules(
         if "Date_Time" not in historical_data.columns:
             raise ValueError("履歴データに'Date_Time'カラムが存在しません")
         if "SD_Conversion" in historical_data.columns:
-            historical_sd_conversions = historical_data[
-                "SD_Conversion"].tolist()
+            historical_sd_conversions = historical_data["SD_Conversion"
+                                                        ].tolist()
 
     # データを処理用に整形
     processed_data = {
