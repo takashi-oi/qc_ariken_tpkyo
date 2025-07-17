@@ -42,9 +42,7 @@ def create_excel_report(df, year, month):
         # データを日時でソート
         df_sorted = df.sort_values("日時")
         # 日付ごと・Typeごとにピボット
-        pivot = df_sorted.pivot_table(index="日時",
-                                      columns="Type",
-                                      values="PC/SD換算")
+        pivot = df_sorted.pivot_table(index="日時", columns="Type", values="PC/SD換算")
         pivot = pivot.reset_index()
         # グラフデータをエクセルに書き込み（A1から開始）
         start_row = 1
@@ -80,9 +78,7 @@ def create_excel_report(df, year, month):
             )
             # カテゴリ範囲（A列の日付、ヘッダー行を除く）
             categories = Reference(
-                ws_chart, min_col=1,
-                min_row=data_start_row + 1,
-                max_row=data_end_row
+                ws_chart, min_col=1, min_row=data_start_row + 1, max_row=data_end_row
             )
 
             # カラム名（Type名）を件名として表示
@@ -167,40 +163,22 @@ def main():
             df, df_item, left_on="項目コード", right_on="Item_Code", how="left"
         )
 
-        st.markdown(f"### {year}年{month}月：データ一覧")
-        if not df.empty:
-            grouped = df.groupby(["Measurement_Item", "Type"])
-            for (item_name, type_val), group in grouped:
-                st.markdown(f"#### 項目名: {item_name} / Type: {type_val}")
-                display_cols = [
-                    "機種",
-                    "Type",
-                    "Dye",
-                    "Lot Number",
-                    "NC判定",
-                    "PC/Ct値",
-                    "PC/SD換算",
-                    "PC/判定",
-                    "違反ルール",
-                    "原因",
-                    "CAPA",
-                ]
-                display_cols = [col for col in display_cols
-                                if col in group.columns]
-                st.dataframe(group[display_cols], use_container_width=True)
-        else:
-            st.info("該当期間のデータがありません。")
-
         # SD換算のグラフをTypeごとにまとめて1つのグラフで表示
         if not df.empty and "PC/SD換算" in df.columns and "Type" in df.columns:
-            st.markdown("### ｘ管理図（SD換算）")
+            st.markdown(f"### {year}年{month}月：ｘ管理図（SD換算）")
             df_sorted = df.sort_values("日時")
+            # 日付表示を「YY/MM/DD：Batch」に変換
+            df_sorted["日付バッチ"] = (
+                pd.to_datetime(df_sorted["日時"]).dt.strftime("%y/%m/%d")
+                + ":"
+                + df_sorted["バッチ"].astype(str)
+            )
             fig = px.line(
                 df_sorted,
-                x="日時",
+                x="日付バッチ",
                 y="PC/SD換算",
                 color="Type",
-                title="SD換算の推移（Typeごと）",
+                # title="SD換算の推移（Typeごと）",
             )
             fig.update_yaxes(range=[-5, 5])
             st.plotly_chart(fig, use_container_width=True)
@@ -235,6 +213,29 @@ def main():
                 st.dataframe(group, use_container_width=True)
         else:
             st.info("該当期間のQCチェックログはありません。")
+
+        st.markdown(f"### {year}年{month}月：データ一覧")
+        if not df.empty:
+            grouped = df.groupby(["Measurement_Item", "Type"])
+            for (item_name, type_val), group in grouped:
+                st.markdown(f"#### 項目名: {item_name} / Type: {type_val}")
+                display_cols = [
+                    "機種",
+                    "Type",
+                    "Dye",
+                    "Lot Number",
+                    "NC判定",
+                    "PC/Ct値",
+                    "PC/SD換算",
+                    "PC/判定",
+                    "違反ルール",
+                    "原因",
+                    "CAPA",
+                ]
+                display_cols = [col for col in display_cols if col in group.columns]
+                st.dataframe(group[display_cols], use_container_width=True)
+        else:
+            st.info("該当期間のデータがありません。")
 
     # エクセル出力ボタンがクリックされた場合の処理
     if export_excel_button and year and month:
