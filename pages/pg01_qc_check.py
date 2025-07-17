@@ -135,24 +135,16 @@ class QCCheckApp:
         """データ概要の表示（最適化版）"""
         metrics = {
             "ファイル情報": (
-                len(data.file_info)
-                if isinstance(data.file_info, pd.DataFrame)
-                else 0
+                len(data.file_info) if isinstance(data.file_info, pd.DataFrame) else 0
             ),
             "ICデータ": (
-                len(data.ic_data)
-                if isinstance(data.ic_data, pd.DataFrame)
-                else 0
+                len(data.ic_data) if isinstance(data.ic_data, pd.DataFrame) else 0
             ),
             "NCデータ": (
-                len(data.nc_data)
-                if isinstance(data.nc_data, pd.DataFrame)
-                else 0
+                len(data.nc_data) if isinstance(data.nc_data, pd.DataFrame) else 0
             ),
             "PCデータ": (
-                len(data.pc_data)
-                if isinstance(data.pc_data, pd.DataFrame)
-                else 0
+                len(data.pc_data) if isinstance(data.pc_data, pd.DataFrame) else 0
             ),
         }
 
@@ -197,8 +189,7 @@ class QCCheckApp:
     # データベースの重複チェックを行う非同期関数
     async def check_for_duplicates(self, data: ProcessedData) -> bool:
         """データベースの重複チェックを行う"""
-        if not isinstance(data.file_info,
-                          pd.DataFrame) or data.file_info.empty:
+        if not isinstance(data.file_info, pd.DataFrame) or data.file_info.empty:
             st.error("処理するデータのファイル情報が存在しません")
             return True
 
@@ -227,8 +218,7 @@ class QCCheckApp:
             # 各テーブルの重複チェック
             duplicate_found = False
             for table, check_data in duplicate_checks.items():
-                if await self.db_manager.check_duplicate_records(table,
-                                                                 check_data):
+                if await self.db_manager.check_duplicate_records(table, check_data):
                     st.warning(f"{table}に重複するレコードが存在します")
                     duplicate_found = True
                     break  # 重複が見つかったらループを抜ける
@@ -246,8 +236,7 @@ class QCCheckApp:
     async def handle_database_operations(self, data: ProcessedData) -> None:
         """データベース操作の処理（最適化版）"""
         if st.button("データベース登録／マルチルールチェック開始"):
-            if not isinstance(data.file_info,
-                              pd.DataFrame) or data.file_info.empty:
+            if not isinstance(data.file_info, pd.DataFrame) or data.file_info.empty:
                 st.error("処理するデータが存在しません")
                 return
 
@@ -282,9 +271,7 @@ class QCCheckApp:
                 await self.process_and_display_westgard_results(data)
 
     # Westgardルールチェックの処理と表示を行う非同期関数
-    async def process_and_display_westgard_results(self,
-                                                   data: ProcessedData
-                                                   ) -> None:
+    async def process_and_display_westgard_results(self, data: ProcessedData) -> None:
         """Westgardルールチェックの処理と表示"""
         async with self.error_handler():
             data_types = {"PC": data.pc_data}
@@ -329,11 +316,15 @@ class QCCheckApp:
 
                             # マルチルールチェック結果の表示
                             st.markdown("### マルチルールチェック結果")
-                            for type_name, group in historical_data.groupby(
-                                 "Type"):
-                                st.write(f"#### {type_name} 解析結果")
+                            for type_name, group in historical_data.groupby("Type"):
+                                # 直近（最新）の1件のみ抽出
+                                latest_row = group.sort_values(
+                                    "Date_Time", ascending=False
+                                ).head(1)
+                                title = f"#### {type_name} 直近データ解析結果"
+                                st.write(title)
                                 try:
-                                    rule_results = check_westgard_rules(group)
+                                    rule_results = check_westgard_rules(latest_row)
                                     # File_Name列を追加
                                     rule_results["File_Name"] = data.file_info[
                                         "File_Name"
@@ -387,7 +378,7 @@ class QCCheckApp:
     async def run(self) -> None:
         """アプリケーションのメイン実行関数"""
         async with self.error_handler():
-            with st.sidebar:
+            with st.sidebar:  # type: ignore[attr-defined]
                 uploaded_file = st.file_uploader(
                     "QCデータファイルをアップロード", type=["xlsx"]
                 )
