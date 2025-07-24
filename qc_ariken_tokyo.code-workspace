@@ -1,23 +1,37 @@
 {
-    "folders": [
-		{
-			"path": "."
-		}
-	],
-	"extensions": {
-		"recommendations": [
-			"saoudrizwan.claude-dev"
-		]
-	},
-	"settings": {
-		"DockerRun.DisableDockerrc": true,
-		"DockerRun.Containers": [
-			"6c90ca2ce3de"
-		],
-		"python.defaultInterpreterPath": "./.venv/bin/python",
-		"python.terminal.activateEnvironment": true,
-		"cSpell.words": [
-			"yaxes"
-		]
-	}
+  "folders": [
+    {
+      "path": "."
+    }
+  ],
+  "extensions": {
+    "recommendations": [
+      "saoudrizwan.claude-dev",
+      "ms-python.python",
+      "ms-python.vscode-pylance",
+      "ms-python.black-formatter",
+      "ms-python.flake8",
+      "ms-python.isort"
+    ]
+  },
+  "settings": {
+    "DockerRun.DisableDockerrc": true,
+    "DockerRun.Containers": ["6c90ca2ce3de"],
+    "python.defaultInterpreterPath": "./.venv/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "python.analysis.typeCheckingMode": "off",
+    "python.analysis.autoImportCompletions": true,
+    "python.analysis.autoSearchPaths": true,
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.extraPaths": ["./src", "./pages"],
+    "python.analysis.include": ["./pages", "./src"],
+    "python.analysis.exclude": [
+      "**/node_modules",
+      "**/__pycache__",
+      ".venv",
+      "venv",
+      "**/*.pyc"
+    ],
+    "cSpell.words": ["yaxes"]
+  }
 }

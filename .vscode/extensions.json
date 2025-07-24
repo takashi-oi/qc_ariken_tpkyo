@@ -1,5 +1,10 @@
 {
-    "recommendations": [
-        "saoudrizwan.claude-dev"
-    ]
+  "recommendations": [
+    "saoudrizwan.claude-dev",
+    "ms-python.python",
+    "ms-python.vscode-pylance",
+    "ms-python.black-formatter",
+    "ms-python.flake8",
+    "ms-python.isort"
+  ]
 }

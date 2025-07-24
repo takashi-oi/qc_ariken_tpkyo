@@ -192,6 +192,9 @@ class MultiRule:
         if not isinstance(sd_conversions, (list, np.ndarray)):
             sd_conversions = [sd_conversions]
 
+        print(f"evaluate_rules: SD変換値の数: {len(sd_conversions)}")
+        print(f"evaluate_rules: SD変換値: {sd_conversions}")
+
         # 最新のデータポイントのインデックス
         latest_idx = len(sd_conversions) - 1
 
@@ -209,31 +212,36 @@ class MultiRule:
         latest_sd = abs(sd_conversions[latest_idx])
         results["1-2s"] = 1 if 2 <= latest_sd <= 3 else 0
         results["1-3s"] = 1 if latest_sd > 3 else 0
+        print(f"1-2s: {results['1-2s']} (latest_sd: {latest_sd})")
+        print(f"1-3s: {results['1-3s']} (latest_sd: {latest_sd})")
 
         # 直近2点での2-2sルールの評価
         if len(sd_conversions) >= 2:
             last_two = sd_conversions[-2:]
             results["2-2s"] = (
                 1
-                if (all(sd < -2 for sd in last_two) or all(
-                    sd > 2 for sd in last_two))
+                if (all(sd < -2 for sd in last_two) or
+                    all(sd > 2 for sd in last_two))
                 else 0
             )
+            print(f"2-2s: {results['2-2s']} (last_two: {last_two})")
 
         # 直近2点でのR-4sルールの評価
         if len(sd_conversions) >= 2:
             last_two = sd_conversions[-2:]
             results["R-4s"] = 1 if abs(last_two[0] - last_two[1]) > 4 else 0
+            print(f"R-4s: {results['R-4s']} (last_two: {last_two})")
 
         # 直近4点での4-1sルールの評価
         if len(sd_conversions) >= 4:
             last_four = sd_conversions[-4:]
             results["4-1s"] = (
                 1
-                if (all(sd < -1 for sd in last_four) or all(
-                    sd > 1 for sd in last_four))
+                if (all(sd < -1 for sd in last_four) or
+                    all(sd > 1 for sd in last_four))
                 else 0
             )
+            print(f"4-1s: {results['4-1s']} (last_four: {last_four})")
 
         # 直近8点での8xルールの評価
         if len(sd_conversions) >= 8:
@@ -241,12 +249,14 @@ class MultiRule:
             results["8x"] = (
                 1
                 if (
-                    all(sd > 0 for sd in last_eight) or all(
-                        sd < 0 for sd in last_eight)
+                    all(sd > 0 for sd in last_eight) or
+                    all(sd < 0 for sd in last_eight)
                 )
                 else 0
             )
+            print(f"8x: {results['8x']} (last_eight: {last_eight})")
 
+        print(f"最終評価結果: {results}")
         return results
 
     # マルチルールを適用する関数
@@ -290,16 +300,8 @@ class MultiRule:
         print(f"最新日付のインデックス: {latest_date_index}")
         print(f"最新日付: {date[latest_date_index]}")
 
-        for i, (value,
-                sd_conv,
-                qc_type,
-                item_code,
-                dye,
-                b,
-                m,
-                d,
-                meas,
-                l) in enumerate(
+        for i, (value, sd_conv, qc_type, item_code, dye, b, m, d, meas, l
+                ) in enumerate(
             zip(
                 qc_data,
                 sd_conversions,
@@ -344,12 +346,17 @@ class MultiRule:
                 if historical_sd_conversions is not None:
                     # 履歴データ + 現在のデータを使用
                     combined_sd = historical_sd_conversions + sd_conversions
+                    print(f"履歴データ数: {len(historical_sd_conversions)}")
+                    print(f"現在データ数: {len(sd_conversions)}")
+                    print(f"結合データ数: {len(combined_sd)}")
                 else:
                     # 現在のデータのみを使用
                     combined_sd = sd_conversions
+                    print(f"履歴データなし、現在データのみ使用: {len(sd_conversions)}")
 
                 # Westgardルールの評価（最新日付のレコードに対してのみ）
                 westgard_rules = self.evaluate_rules(combined_sd)
+                print(f"Westgardルール評価結果: {westgard_rules}")
 
                 # Westgardルールの結果を更新
                 result.update(westgard_rules)
@@ -368,9 +375,8 @@ class MultiRule:
                     result["Judgment"] = "Fail"
                     # 違反したルールを抽出
                     error_rules = [
-                        rule for rule,
-                        violated in westgard_rules.items()
-                        if violated
+                        rule for rule, violated in
+                        westgard_rules.items() if violated
                     ]
                     if error_type:
                         error_rules.append("Type_error")
@@ -530,12 +536,14 @@ def check_westgard_rules(
 
     # 履歴データのSD変換値を取得
     historical_sd_conversions = None
-    if historical_data is not None:
+    if historical_data is not None and not historical_data.empty:
         if "Date_Time" not in historical_data.columns:
             raise ValueError("履歴データに'Date_Time'カラムが存在しません")
         if "SD_Conversion" in historical_data.columns:
-            historical_sd_conversions = historical_data["SD_Conversion"
-                                                        ].tolist()
+            # 履歴データを日付順にソートしてSD変換値を取得
+            historical_data_sorted = historical_data.sort_values("Date_Time")
+            historical_sd_conversions = historical_data_sorted["SD_Conversion"
+                                                               ].tolist()
 
     # データを処理用に整形
     processed_data = {

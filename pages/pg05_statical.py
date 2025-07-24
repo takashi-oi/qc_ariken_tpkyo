@@ -1,9 +1,10 @@
 """
-# -*- coding: utf-8 -*-
-# 統計学的精度管理　確認・台帳作成
+-*- coding: utf-8 -*-
+統計学的精度管理　確認・台帳作成
 """
 
 import calendar
+import io
 import sqlite3
 
 import pandas as pd
@@ -15,7 +16,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 
 
 # メインの処理を行う関数
-def create_excel_report(df, year, month):
+def create_excel_report(df, year, month, return_wb=False):
     """エクセルファイルを作成する関数"""
     # ファイル名を生成
     filename = f"内部精度管理台帳_{year}年{month.zfill(2)}月.xlsx"
@@ -42,7 +43,9 @@ def create_excel_report(df, year, month):
         # データを日時でソート
         df_sorted = df.sort_values("日時")
         # 日付ごと・Typeごとにピボット
-        pivot = df_sorted.pivot_table(index="日時", columns="Type", values="PC/SD換算")
+        pivot = df_sorted.pivot_table(index="日時",
+                                      columns="Type",
+                                      values="PC/SD換算")
         pivot = pivot.reset_index()
         # グラフデータをエクセルに書き込み（A1から開始）
         start_row = 1
@@ -78,7 +81,10 @@ def create_excel_report(df, year, month):
             )
             # カテゴリ範囲（A列の日付、ヘッダー行を除く）
             categories = Reference(
-                ws_chart, min_col=1, min_row=data_start_row + 1, max_row=data_end_row
+                ws_chart,
+                min_col=1,
+                min_row=data_start_row + 1,
+                max_row=data_end_row
             )
 
             # カラム名（Type名）を件名として表示
@@ -88,7 +94,8 @@ def create_excel_report(df, year, month):
             # グラフをA1に配置
             ws_chart.add_chart(chart, "A1")
 
-    # ファイルを保存
+    if return_wb:
+        return wb
     wb.save(filename)
     return filename
 
@@ -182,6 +189,84 @@ def main():
             )
             fig.update_yaxes(range=[-5, 5])
             st.plotly_chart(fig, use_container_width=True)
+
+            # Lot_Number, TypeごとにSD換算値の基本統計量を算出
+            if "Lot Number" in df_sorted.columns:
+                stat_df = (
+                    df_sorted.groupby(["Measurement_Item",
+                                       "Lot Number",
+                                       "Type"])[
+                        "PC/SD換算"
+                    ]
+                    .agg(["mean", "std", "min", "max", "median", "count"])
+                    .reset_index()
+                )
+                # 変動係数（CV）を計算し、標準偏差の次の列に挿入
+                stat_df["変動係数(%)"] = stat_df["std"] / stat_df["mean"
+                                                              ].abs() * 100
+                # 列の順序を調整
+                cols = stat_df.columns.tolist()
+                if "std" in cols and "変動係数(%)" in cols:
+                    std_idx = cols.index("std")
+                    # stdの次にCVを挿入
+                    cols.insert(std_idx + 1, cols.pop(cols.index("変動係数(%)")))
+                    stat_df = stat_df[cols]
+                # Measurement_Item（項目名）を集計に追加
+                if "Measurement_Item" in df_sorted.columns:
+                    stat_df = pd.merge(
+                        stat_df,
+                        df_sorted[
+                            ["Lot Number", "Type", "Measurement_Item"]
+                        ].drop_duplicates(),
+                        on=["Lot Number", "Type"],
+                        how="left",
+                    )
+                # UCL3, LCL3を固定値で設定
+                stat_df["UCL3"] = 3
+                stat_df["LCL3"] = -3
+                # 工程能力指数（UCL3-LCL3）/（6*標準偏差）→ stdで計算
+                stat_df["工程能力指数"] = (stat_df["UCL3"] - stat_df["LCL3"]) / (
+                    6 * stat_df["std"]
+                )
+                stat_df["工程能力指数"] = stat_df["工程能力指数"].round(2)
+
+                # 最後に日本語名へリネーム
+                stat_df = stat_df.rename(
+                    columns={
+                        "Measurement_Item": "項目名",
+                        "mean": "平均",
+                        "std": "標準偏差",
+                        "変動係数(%)": "変動係数(%)",
+                        "min": "最小値",
+                        "max": "最大値",
+                        "median": "中央値",
+                        "count": "件数",
+                    }
+                )
+                # 列の順序を指定
+                col_order = [
+                    "Measurement_Item",
+                    "Type",
+                    "Lot Number",
+                    "件数",
+                    "平均",
+                    "標準偏差",
+                    "変動係数(%)",
+                    "最小値",
+                    "最大値",
+                    "中央値",
+                    # "LCL3",
+                    # "UCL3",
+                    "工程能力指数",
+                ]
+                # 存在する列のみ表示
+                col_order = [col for col in col_order
+                             if col in stat_df.columns]
+                stat_df = stat_df[col_order]
+                # 列名を日本語に
+                stat_df = stat_df.rename(columns={"Measurement_Item": "項目名"})
+                st.markdown("#### SD換算値 基本統計量")
+                st.dataframe(stat_df, use_container_width=True)
         else:
             st.info("SD換算データがありません。")
 
@@ -232,7 +317,8 @@ def main():
                     "原因",
                     "CAPA",
                 ]
-                display_cols = [col for col in display_cols if col in group.columns]
+                display_cols = [col for col in display_cols
+                                if col in group.columns]
                 st.dataframe(group[display_cols], use_container_width=True)
         else:
             st.info("該当期間のデータがありません。")
@@ -291,8 +377,18 @@ def main():
 
         # エクセルファイルを作成
         try:
-            filename = create_excel_report(df, year, month)
-            st.success(f"エクセルファイル '{filename}' が作成されました。")
+            # メモリ上にエクセルファイルを保存
+            output = io.BytesIO()
+            wb = create_excel_report(df, year, month, return_wb=True)  # 関数を修正
+            wb.save(output)
+            output.seek(0)
+            st.success("エクセルファイルが作成されました。")
+            st.download_button(
+                label="エクセルファイルをダウンロード",
+                data=output,
+                file_name=f"内部精度管理台帳_{year}年{month.zfill(2)}月.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
         except Exception as e:
             st.error(f"エクセルファイルの作成中にエラーが発生しました: {str(e)}")
 

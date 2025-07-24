@@ -8,6 +8,31 @@
   "python.linting.flake8Enabled": true,
   "python.formatting.provider": "black",
   "python.sortImports.args": ["--profile", "black"],
+  "python.analysis.typeCheckingMode": "off",
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.autoSearchPaths": true,
+  "python.analysis.diagnosticMode": "workspace",
+  "python.analysis.stubPath": "./typings",
+  "python.analysis.extraPaths": ["./src", "pages"],
+  "python.analysis.include": ["pages", "src"],
+  "python.analysis.exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".venv",
+    "venv",
+    "**/*.pyc"
+  ],
+  "python.analysis.ignore": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".venv",
+    "venv"
+  ],
+  "python.analysis.autoComplete": {
+    "addBrackets": true,
+    "includeCompletionsForModuleExports": true,
+    "includeCompletionsWithSnippetText": true
+  },
   "files.exclude": {
     "**/__pycache__": true,
     "**/*.pyc": true,
@@ -28,7 +53,7 @@
   "cline.baseUrl": "http://localhost:11434",
   "cline.model": "codellama:7b",
   "cline.temperature": 0.3,
-  "cline.maxTokens": 2048,
+  "cline.maxTokens": 248,
   "cline.timeout": 30000,
   "cline.retryAttempts": 3,
   "cline.autoComplete": true,
@@ -39,4 +64,4 @@
   "cline.documentation": true,
   "cline.showSuggestions": true,
   "cline.inlineSuggestions": true
-} 
+}

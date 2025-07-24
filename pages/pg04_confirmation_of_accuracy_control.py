@@ -119,8 +119,7 @@ class DatabaseManager:
             columns = [row[1] for row in cursor.fetchall()]
             if "date" not in columns:
                 try:
-                    conn.execute(
-                        "ALTER TABLE table_qc_check_log ADD COLUMN date TEXT;")
+                    conn.execute("ALTER TABLE table_qc_check_log ADD COLUMN date TEXT;")
                     logger.info("date カラムを追加しました。")
                 except sqlite3.Error as e:
                     logger.error("date カラムの追加に失敗しました: %s", e)
@@ -245,12 +244,7 @@ class DatabaseManager:
                 # カラム情報をDataFrameに変換
                 schema_df = pd.DataFrame(
                     columns,
-                    columns=["cid",
-                             "name",
-                             "type",
-                             "notnull",
-                             "dflt_value",
-                             "pk"],
+                    columns=["cid", "name", "type", "notnull", "dflt_value", "pk"],
                 )
                 return schema_df
         except sqlite3.Error as e:
@@ -262,9 +256,7 @@ class DatabaseManager:
 class QCCheckUI:
     """QCチェックのUI管理"""
 
-    def __init__(self,
-                 db_manager: DatabaseManager,
-                 today: date = date.today()):
+    def __init__(self, db_manager: DatabaseManager, today: date = date.today()):
         self.db_manager = db_manager
         self._today = today
 
@@ -303,11 +295,11 @@ class QCCheckUI:
             measurer = st.text_input("精度管理評価者名  ").strip() or "未入力"
             # 変数に格納してから返す
             if isinstance(start_date, date):
-                start_date_str = start_date.strftime("%Y-%m-%d")
+                start_date_str = start_date.strftime("%Y/%m/%d")
             else:
                 start_date_str = "不明"
             if isinstance(end_date, date):
-                end_date_str = end_date.strftime("%Y-%m-%d")
+                end_date_str = end_date.strftime("%Y/%m/%d")
             else:
                 end_date_str = "不明"
 
@@ -332,8 +324,7 @@ class QCCheckUI:
 
         qc_data, status_data = check_data  # ここでデフォルト値を設定
 
-        if qc_data is None or (isinstance(qc_data,
-                                          pd.DataFrame) and qc_data.empty):
+        if qc_data is None or (isinstance(qc_data, pd.DataFrame) and qc_data.empty):
             st.warning("QCデータがありません")
             return []
 
@@ -342,8 +333,10 @@ class QCCheckUI:
             st.subheader("抽出されたQCデータの概要")
             st.write("データ件数:", len(qc_data))
             st.write(
-                "期間:", qc_data["date_time"
-                               ].min(), "から", qc_data["date_time"].max()
+                "期間:",
+                qc_data["date_time"].min(),
+                "から",
+                qc_data["date_time"].max(),
             )
 
             # QCデータの詳細をExpander内に表示
@@ -353,12 +346,10 @@ class QCCheckUI:
             check_logs = []
             for type_name, group in qc_data.groupby("Type"):
                 with st.expander(f"Type: {type_name}", expanded=True):
-                    st.line_chart(group.set_index(
-                        "date_time")["sd_conversion"])
+                    st.line_chart(group.set_index("date_time")["sd_conversion"])
 
                     # ステータスデータを表示
-                    status_group = status_data[status_data[
-                        "status_type"] == type_name]
+                    status_group = status_data[status_data["status_type"] == type_name]
                     if not status_group.empty:
                         st.write("ステータスデータ:")
                         st.dataframe(status_group)

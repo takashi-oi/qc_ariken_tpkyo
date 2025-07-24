@@ -1,0 +1,12 @@
+{
+  "include": ["pages", "src"],
+  "exclude": ["**/node_modules", "**/__pycache__", ".venv", "venv"],
+  "typeCheckingMode": "off",
+  "useLibraryCodeForTypes": true,
+  "reportMissingImports": false,
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.8",
+  "pythonPlatform": "Darwin",
+  "venvPath": ".",
+  "venv": "venv"
+} 

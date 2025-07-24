@@ -1,0 +1,437 @@
+"""
+QCデータ処理モジュール
+"""
+
+from typing import Any, Dict
+
+import pandas as pd
+import streamlit as st
+
+from src.config import Config
+from src.data_import.data_importer import DataImporter
+from src.utils.file_processing import ProcessedData
+
+
+class QCDataProcessor:
+    """QCデータ処理クラス"""
+
+    def __init__(self):
+        self.data_importer = DataImporter()
+
+    async def process_data_batch(self, data: ProcessedData) -> Dict[str, Any]:
+        """データの一括処理を行う"""
+        from src.models.westgard_rules import MultiRule
+
+        results = {}
+
+        # MultiRule インスタンスの取得
+        from src.database.connection import get_db_connection
+
+        async with get_db_connection(Config.DATABASE_PATH) as conn:
+            westgard_checker = MultiRule(
+                type_conditions={
+                    "IC": [{"Type": "sd_conversion", "value": 2.0}],
+                    "NC": [{"Type": "sd_conversion", "value": 3.0}],
+                    "PC": [{"Type": "sd_conversion", "value": 2.5}],
+                },
+                db_connection=conn,
+            )
+
+        for data_type, df in [
+            ("IC", data.ic_data),
+            ("NC", data.nc_data),
+            ("PC", data.pc_data),
+        ]:
+            if not isinstance(df, pd.DataFrame) or df.empty:
+                continue
+
+            try:
+                required_columns = [
+                    "Ct",
+                    "SD_Conversion",
+                    "Type",
+                    "Item_Code",
+                    "Dye",
+                    "Batch",
+                    "Model",
+                    "Date_Time",
+                ]
+                # 必要なカラムが全て存在するか確認
+                missing_columns = [
+                    col for col in required_columns if col not in df.columns
+                ]
+
+                if missing_columns:
+                    st.warning(
+                        f"{data_type}データには次のカラムが欠けています: "
+                        f"{', '.join(missing_columns)}"
+                    )
+                    continue
+
+                # 必要なカラムの存在確認と安全な取得
+                df_dict = {
+                    "qc_data": df["Ct"].tolist(),
+                    "sd_conversions": df["SD_Conversion"].tolist(),
+                    "types": df["Type"].tolist(),
+                    "item_codes": df["Item_Code"].tolist(),
+                    "dyes": df["Dye"].tolist(),
+                    "batch": df["Batch"].tolist(),
+                    "model": df["Model"].tolist(),
+                    "date": df["Date_Time"].tolist(),
+                }
+
+                # 全てのリストが同じ長さであることを確認
+                if not all(len(v) == len(df) for v in df_dict.values()):
+                    st.warning(f"{data_type}データの一部のカラムが欠落しています")
+                    continue
+
+                results[data_type] = westgard_checker.apply_rules(**df_dict)
+
+            except KeyError as e:
+                st.warning(
+                    f"{data_type}データの処理中にエラーが発生しました: "
+                    f"キー '{e}' が見つかりません"
+                )
+            except (ValueError, TypeError, AttributeError) as e:
+                st.error(f"実行時エラーが発生しました: {str(e)}")
+
+        return results
+
+    async def process_and_display_westgard_results(self, data: ProcessedData) -> None:
+        """Westgardルールチェックの処理と表示"""
+        import sqlite3
+
+        from src.database.connection import get_db_connection
+        from src.models.westgard_rules import check_westgard_rules
+
+        async with get_db_connection(Config.DATABASE_PATH) as conn:
+            try:
+                data_types = {"PC": data.pc_data}
+
+                for data_type, df in data_types.items():
+                    if not isinstance(df, pd.DataFrame) or df.empty:
+                        continue
+
+                    st.markdown(f"#### {data_type} Control Multi Rule Results")
+
+                    # PC データは過去データと比較
+                    if data_type == "PC":
+                        try:
+                            item_code = data.file_info["Item_Code"].iloc[0]
+                            historical_query = """
+                            SELECT * FROM table_qc_pc
+                            WHERE Item_Code = ?
+                            ORDER BY Date_Time DESC
+                            """
+                            historical_data = (
+                                pd.read_sql_query(
+                                    historical_query, conn, params=(item_code,)
+                                )
+                                .groupby("Type")
+                                .head(10)
+                            )
+
+                            if historical_data.empty:
+                                st.warning(
+                                    "過去データが存在しないため、"
+                                    "マルチルールチェックを実行できません"
+                                )
+                                return
+
+                            # 直近アップロードデータのマルチルール判定
+                            st.markdown("### マルチルールチェック判定結果")
+
+                            # 1. マルチルール判定＆登録
+                            for type_name, group in df.groupby("Type"):
+                                # 履歴データを取得してWestgardルールチェックに渡す
+                                type_historical_data = historical_data[
+                                    historical_data["Type"] == type_name
+                                ]
+                                result_df = check_westgard_rules(
+                                    group, historical_data=type_historical_data
+                                )
+                                result_df["File_Name"] = data.file_info[
+                                    "File_Name"
+                                ].iloc[0]
+
+                                # 重複除外
+                                existing_keys = pd.read_sql_query(
+                                    """
+                                    SELECT Item_Code, Date_Time, Batch, Model,
+                                    Type, Lot_Number
+                                    FROM table_qc_multi_rule
+                                    WHERE Item_Code = ?
+                                    """,
+                                    conn,
+                                    params=(item_code,),
+                                )
+                                merge_cols = [
+                                    "Item_Code",
+                                    "Date_Time",
+                                    "Batch",
+                                    "Model",
+                                    "Type",
+                                    "Lot_Number",
+                                ]
+                                if all(col in result_df.columns for col in merge_cols):
+                                    merged = result_df.merge(
+                                        existing_keys,
+                                        on=merge_cols,
+                                        how="left",
+                                        indicator=True,
+                                    )
+                                    new_records = merged[
+                                        merged["_merge"] == "left_only"
+                                    ].drop(columns=["_merge"])
+                                else:
+                                    new_records = result_df
+
+                                if not new_records.empty:
+                                    new_records.to_sql(
+                                        "table_qc_multi_rule",
+                                        conn,
+                                        if_exists="append",
+                                        index=False,
+                                    )
+
+                            # 2. table_qc_multi_ruleからデータ取得
+                            multi_rule_query = """
+                            SELECT * FROM table_qc_multi_rule
+                            WHERE Item_Code = ?
+                            ORDER BY Date_Time DESC
+                            """
+                            multi_rule_data = pd.read_sql_query(
+                                multi_rule_query, conn, params=(item_code,)
+                            )
+                            if multi_rule_data.empty:
+                                st.warning("table_qc_multi_ruleにデータがありません")
+                                return
+
+                            # データの基本統計量 (Type別)
+                            st.write("### データの基本統計量 (Type別)")
+                            grouped_stats = multi_rule_data.groupby("Type")[
+                                ["SD_Conversion", "Ct"]
+                            ].describe()
+                            st.dataframe(grouped_stats)
+
+                            # Typeごとに直近10件のグラフ・データ一覧
+                            for type_name in multi_rule_data["Type"].unique():
+                                type_hist = multi_rule_data[
+                                    multi_rule_data["Type"] == type_name
+                                ]
+                                st.write(f"#### {type_name} 解析結果")
+
+                                chart_df = type_hist.copy()
+                                if "Date_Time" in chart_df.columns:
+                                    chart_df["Date_Time"] = pd.to_datetime(
+                                        chart_df["Date_Time"], errors="coerce"
+                                    )
+                                    chart_df = chart_df.dropna(subset=["Date_Time"])
+                                    chart_df = chart_df.sort_values(
+                                        "Date_Time", ascending=True
+                                    )
+                                    chart_df = chart_df.tail(10)
+                                    chart_df = chart_df.sort_values(
+                                        "Date_Time", ascending=True
+                                    )
+                                    chart_df["Date_Time"] = chart_df[
+                                        "Date_Time"
+                                    ].dt.strftime("%y/%m/%d")
+
+                                    if "Batch" in chart_df.columns:
+                                        chart_df["Date_Time"] = (
+                                            chart_df["Date_Time"]
+                                            + ":"
+                                            + chart_df["Batch"].astype(str)
+                                        )
+
+                                    if not chart_df.empty:
+                                        chart_plot_df = chart_df.set_index("Date_Time")
+                                        chart_plot = chart_plot_df["SD_Conversion"]
+                                        st.line_chart(chart_plot)
+                                        st.write("##### データ一覧")
+
+                                        # カラム順を指定
+                                        display_columns = [
+                                            "Item_Code",
+                                            "Date_Time",
+                                            "Batch",
+                                            "Model",
+                                            "Type",
+                                            "Lot_Number",
+                                            "Judgment",
+                                            "SD_Conversion",
+                                        ]
+                                        display_columns = [
+                                            col
+                                            for col in display_columns
+                                            if col in chart_df.columns
+                                        ]
+                                        chart_df = chart_df[display_columns]
+                                        sort_cols = ["Date_Time"]
+                                        if "Batch" in chart_df.columns:
+                                            sort_cols.append("Batch")
+                                        chart_df = chart_df.sort_values(
+                                            sort_cols, ascending=True
+                                        )
+                                        st.dataframe(chart_df, use_container_width=True)
+                                    else:
+                                        st.info(
+                                            "グラフ・データ一覧の表示対象データがありません。"
+                                        )
+                                else:
+                                    st.info("Date_Timeカラムが存在しません。")
+
+                                # 2. QCチェックログ（Failのみ）
+                                st.write("##### QCチェックログ（異常のみ）")
+                                fail_log = type_hist[type_hist["Judgment"] == "Fail"]
+                                if not fail_log.empty:
+                                    st.dataframe(fail_log, use_container_width=True)
+                                else:
+                                    st.info("異常なQCチェックログはありません。")
+
+                                # 3. データ一覧（全件）
+                                st.write("##### データ一覧")
+                                st.dataframe(type_hist, use_container_width=True)
+                                type_hist.to_sql(
+                                    "table_qc_multi_rule",
+                                    conn,
+                                    if_exists="append",
+                                    index=False,
+                                )
+
+                            # 過去データのマルチルール判定（従来通り）
+                            st.markdown("### 登録終了しました")
+
+                            # アップロードデータのTypeごとのDate_Timeセットを作成
+                            uploaded_type_dates = set(
+                                (row.Type, row.Date_Time) for _, row in df.iterrows()
+                            )
+
+                            for type_name, group in historical_data.groupby("Type"):
+                                # 直近（最新）の1件のみ抽出
+                                latest_row = group.sort_values(
+                                    "Date_Time", ascending=False
+                                ).head(1)
+
+                                # アップロードデータと同じType・Date_Timeならスキップ
+                                latest_date = latest_row["Date_Time"].iloc[0]
+                                if (type_name, latest_date) in uploaded_type_dates:
+                                    continue
+
+                                title = f"#### {type_name} 過去データ直近1件解析結果"
+                                st.write(title)
+
+                                try:
+                                    # 過去データの履歴データを取得してWestgardルールチェックに渡す
+                                    past_historical_data = historical_data[
+                                        (historical_data["Type"] == type_name)
+                                        & (historical_data["Date_Time"] != latest_date)
+                                    ]
+                                    rule_results = check_westgard_rules(
+                                        latest_row, historical_data=past_historical_data
+                                    )
+                                    rule_results["File_Name"] = data.file_info[
+                                        "File_Name"
+                                    ].iloc[0]
+
+                                    # 1. x管理図（SD換算値の折れ線グラフ）
+                                    st.write("##### x管理図（SD換算値）")
+                                    if not rule_results.empty:
+                                        key_past = f"display_mode_past_{type_name}"
+                                        display_mode = st.radio(
+                                            f"{type_name}のグラフ表示件数",
+                                            ["直近10件", "全件"],
+                                            horizontal=True,
+                                            key=key_past,
+                                        )
+                                        chart_df = rule_results.copy()
+                                        if "Date_Time" in chart_df.columns:
+                                            chart_df["Date_Time"] = pd.to_datetime(
+                                                chart_df["Date_Time"], errors="coerce"
+                                            )
+                                            chart_df = chart_df.dropna(
+                                                subset=["Date_Time"]
+                                            )
+                                            if display_mode == "直近10件":
+                                                chart_df = chart_df.sort_values(
+                                                    "Date_Time", ascending=True
+                                                )
+                                                chart_df = chart_df.tail(10)
+                                                chart_df = chart_df.sort_values(
+                                                    "Date_Time", ascending=True
+                                                )
+                                            else:
+                                                chart_df = chart_df.sort_values(
+                                                    "Date_Time", ascending=True
+                                                )
+                                            chart_df["Date_Time"] = chart_df[
+                                                "Date_Time"
+                                            ].dt.strftime("%y/%m/%d")
+                                            if "Batch" in chart_df.columns:
+                                                chart_df["Date_Time"] = (
+                                                    chart_df["Date_Time"]
+                                                    + ":"
+                                                    + chart_df["Batch"].astype(str)
+                                                )
+                                            if not chart_df.empty:
+                                                chart_plot_df = chart_df.set_index(
+                                                    "Date_Time"
+                                                )
+                                                chart_plot = chart_plot_df[
+                                                    "SD_Conversion"
+                                                ]
+                                                st.line_chart(chart_plot)
+                                                st.write("##### データ一覧")
+                                                st.dataframe(
+                                                    chart_df, use_container_width=True
+                                                )
+                                            else:
+                                                st.info(
+                                                    "グラフ・データ一覧の表示対象データがありません。"
+                                                )
+                                        else:
+                                            st.info("Date_Timeカラムが存在しません。")
+                                    else:
+                                        st.info("表示対象データがありません。")
+
+                                    # 2. QCチェックログ（Failのみ）
+                                    st.write("##### QCチェックログ（異常のみ）")
+                                    fail_log = rule_results[
+                                        rule_results["Judgment"] == "Fail"
+                                    ]
+                                    if not fail_log.empty:
+                                        st.dataframe(fail_log, use_container_width=True)
+                                    else:
+                                        st.info("異常なQCチェックログはありません。")
+
+                                    # 3. データ一覧（全件）
+                                    st.write("##### データ一覧")
+                                    st.dataframe(rule_results, use_container_width=True)
+                                    rule_results.to_sql(
+                                        "table_qc_multi_rule",
+                                        conn,
+                                        if_exists="append",
+                                        index=False,
+                                    )
+                                except ValueError as e:
+                                    st.error(
+                                        f"{type_name}過去データの処理中にエラーが発生しました: {e}"
+                                    )
+                                    continue
+
+                        except (
+                            sqlite3.Error,
+                            pd.errors.EmptyDataError,
+                            ValueError,
+                            TypeError,
+                            AttributeError,
+                            OSError,
+                            IOError,
+                            RuntimeError,
+                        ) as e:
+                            st.error(
+                                f"{data_type}データの処理中にエラーが発生しました: {e}"
+                            )
+            except Exception as e:
+                st.error(f"Westgardルール処理中にエラーが発生しました: {e}")
