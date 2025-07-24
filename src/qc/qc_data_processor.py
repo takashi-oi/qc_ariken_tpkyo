@@ -2,6 +2,7 @@
 QCデータ処理モジュール
 """
 
+import sqlite3
 from typing import Any, Dict
 
 import pandas as pd
@@ -9,6 +10,8 @@ import streamlit as st
 
 from src.config import Config
 from src.data_import.data_importer import DataImporter
+from src.database.connection import get_db_connection
+from src.models.westgard_rules import MultiRule, check_westgard_rules
 from src.utils.file_processing import ProcessedData
 
 
@@ -20,13 +23,9 @@ class QCDataProcessor:
 
     async def process_data_batch(self, data: ProcessedData) -> Dict[str, Any]:
         """データの一括処理を行う"""
-        from src.models.westgard_rules import MultiRule
-
         results = {}
 
         # MultiRule インスタンスの取得
-        from src.database.connection import get_db_connection
-
         async with get_db_connection(Config.DATABASE_PATH) as conn:
             westgard_checker = MultiRule(
                 type_conditions={
@@ -74,7 +73,7 @@ class QCDataProcessor:
                     "sd_conversions": df["SD_Conversion"].tolist(),
                     "types": df["Type"].tolist(),
                     "item_codes": df["Item_Code"].tolist(),
-                    "dyes": df["Dye"].tolist(),
+                    "dye": df["Dye"].tolist(),  # ←ここを修正
                     "batch": df["Batch"].tolist(),
                     "model": df["Model"].tolist(),
                     "date": df["Date_Time"].tolist(),
@@ -97,12 +96,10 @@ class QCDataProcessor:
 
         return results
 
-    async def process_and_display_westgard_results(self, data: ProcessedData) -> None:
+    async def process_and_display_westgard_results(self,
+                                                   data: ProcessedData
+                                                   ) -> None:
         """Westgardルールチェックの処理と表示"""
-        import sqlite3
-
-        from src.database.connection import get_db_connection
-        from src.models.westgard_rules import check_westgard_rules
 
         async with get_db_connection(Config.DATABASE_PATH) as conn:
             try:
@@ -173,7 +170,8 @@ class QCDataProcessor:
                                     "Type",
                                     "Lot_Number",
                                 ]
-                                if all(col in result_df.columns for col in merge_cols):
+                                if all(col in result_df.columns for
+                                       col in merge_cols):
                                     merged = result_df.merge(
                                         existing_keys,
                                         on=merge_cols,
@@ -226,7 +224,8 @@ class QCDataProcessor:
                                     chart_df["Date_Time"] = pd.to_datetime(
                                         chart_df["Date_Time"], errors="coerce"
                                     )
-                                    chart_df = chart_df.dropna(subset=["Date_Time"])
+                                    chart_df = chart_df.dropna(subset=[
+                                        "Date_Time"])
                                     chart_df = chart_df.sort_values(
                                         "Date_Time", ascending=True
                                     )
@@ -246,8 +245,10 @@ class QCDataProcessor:
                                         )
 
                                     if not chart_df.empty:
-                                        chart_plot_df = chart_df.set_index("Date_Time")
-                                        chart_plot = chart_plot_df["SD_Conversion"]
+                                        chart_plot_df = chart_df.set_index(
+                                            "Date_Time")
+                                        chart_plot = chart_plot_df[
+                                            "SD_Conversion"]
                                         st.line_chart(chart_plot)
                                         st.write("##### データ一覧")
 
@@ -274,7 +275,9 @@ class QCDataProcessor:
                                         chart_df = chart_df.sort_values(
                                             sort_cols, ascending=True
                                         )
-                                        st.dataframe(chart_df, use_container_width=True)
+                                        chart_df = chart_df.drop_duplicates()
+                                        st.dataframe(chart_df,
+                                                     use_container_width=True)
                                     else:
                                         st.info(
                                             "グラフ・データ一覧の表示対象データがありません。"
@@ -284,15 +287,19 @@ class QCDataProcessor:
 
                                 # 2. QCチェックログ（Failのみ）
                                 st.write("##### QCチェックログ（異常のみ）")
-                                fail_log = type_hist[type_hist["Judgment"] == "Fail"]
+                                fail_log = type_hist[type_hist[
+                                    "Judgment"] == "Fail"]
                                 if not fail_log.empty:
-                                    st.dataframe(fail_log, use_container_width=True)
+                                    st.dataframe(fail_log,
+                                                 use_container_width=True)
                                 else:
                                     st.info("異常なQCチェックログはありません。")
 
                                 # 3. データ一覧（全件）
                                 st.write("##### データ一覧")
-                                st.dataframe(type_hist, use_container_width=True)
+                                type_hist = type_hist.drop_duplicates()
+                                st.dataframe(type_hist,
+                                             use_container_width=True)
                                 type_hist.to_sql(
                                     "table_qc_multi_rule",
                                     conn,
@@ -305,10 +312,12 @@ class QCDataProcessor:
 
                             # アップロードデータのTypeごとのDate_Timeセットを作成
                             uploaded_type_dates = set(
-                                (row.Type, row.Date_Time) for _, row in df.iterrows()
+                                (row.Type, row.Date_Time) for _,
+                                row in df.iterrows()
                             )
 
-                            for type_name, group in historical_data.groupby("Type"):
+                            for type_name, group in historical_data.groupby(
+                                "Type"):
                                 # 直近（最新）の1件のみ抽出
                                 latest_row = group.sort_values(
                                     "Date_Time", ascending=False
@@ -316,7 +325,8 @@ class QCDataProcessor:
 
                                 # アップロードデータと同じType・Date_Timeならスキップ
                                 latest_date = latest_row["Date_Time"].iloc[0]
-                                if (type_name, latest_date) in uploaded_type_dates:
+                                if (type_name, latest_date) in \
+                                    uploaded_type_dates:
                                     continue
 
                                 title = f"#### {type_name} 過去データ直近1件解析結果"
@@ -326,10 +336,12 @@ class QCDataProcessor:
                                     # 過去データの履歴データを取得してWestgardルールチェックに渡す
                                     past_historical_data = historical_data[
                                         (historical_data["Type"] == type_name)
-                                        & (historical_data["Date_Time"] != latest_date)
+                                        & (historical_data["Date_Time"
+                                                           ] != latest_date)
                                     ]
                                     rule_results = check_westgard_rules(
-                                        latest_row, historical_data=past_historical_data
+                                        latest_row,
+                                        historical_data=past_historical_data
                                     )
                                     rule_results["File_Name"] = data.file_info[
                                         "File_Name"
@@ -338,7 +350,8 @@ class QCDataProcessor:
                                     # 1. x管理図（SD換算値の折れ線グラフ）
                                     st.write("##### x管理図（SD換算値）")
                                     if not rule_results.empty:
-                                        key_past = f"display_mode_past_{type_name}"
+                                        key_past = f"display_mode_past_{
+                                            type_name}"
                                         display_mode = st.radio(
                                             f"{type_name}のグラフ表示件数",
                                             ["直近10件", "全件"],
@@ -347,8 +360,10 @@ class QCDataProcessor:
                                         )
                                         chart_df = rule_results.copy()
                                         if "Date_Time" in chart_df.columns:
-                                            chart_df["Date_Time"] = pd.to_datetime(
-                                                chart_df["Date_Time"], errors="coerce"
+                                            chart_df["Date_Time"
+                                                     ] = pd.to_datetime(
+                                                chart_df["Date_Time"],
+                                                errors="coerce"
                                             )
                                             chart_df = chart_df.dropna(
                                                 subset=["Date_Time"]
@@ -372,7 +387,8 @@ class QCDataProcessor:
                                                 chart_df["Date_Time"] = (
                                                     chart_df["Date_Time"]
                                                     + ":"
-                                                    + chart_df["Batch"].astype(str)
+                                                    + chart_df["Batch"
+                                                               ].astype(str)
                                                 )
                                             if not chart_df.empty:
                                                 chart_plot_df = chart_df.set_index(
@@ -384,7 +400,8 @@ class QCDataProcessor:
                                                 st.line_chart(chart_plot)
                                                 st.write("##### データ一覧")
                                                 st.dataframe(
-                                                    chart_df, use_container_width=True
+                                                    chart_df,
+                                                    use_container_width=True
                                                 )
                                             else:
                                                 st.info(
@@ -401,13 +418,15 @@ class QCDataProcessor:
                                         rule_results["Judgment"] == "Fail"
                                     ]
                                     if not fail_log.empty:
-                                        st.dataframe(fail_log, use_container_width=True)
+                                        st.dataframe(fail_log,
+                                                     use_container_width=True)
                                     else:
                                         st.info("異常なQCチェックログはありません。")
 
                                     # 3. データ一覧（全件）
                                     st.write("##### データ一覧")
-                                    st.dataframe(rule_results, use_container_width=True)
+                                    st.dataframe(rule_results,
+                                                 use_container_width=True)
                                     rule_results.to_sql(
                                         "table_qc_multi_rule",
                                         conn,
