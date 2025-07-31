@@ -81,8 +81,7 @@ def create_excel_report(df, year, month, return_wb=False):
             )
             # カテゴリ範囲（A列の日付、ヘッダー行を除く）
             categories = Reference(
-                ws_chart,
-                min_col=1,
+                ws_chart, min_col=1,
                 min_row=data_start_row + 1,
                 max_row=data_end_row
             )
@@ -117,6 +116,9 @@ def main():
 
     # 内部精度管理台帳出力ボタンを追加
     export_excel_button = st.sidebar.button("内部精度管理台帳出力")
+
+    # エクセル出力ボタンを追加
+    export_data_button = st.sidebar.button("グラフ・リストをエクセル出力")
 
     # 年月とボタンが両方入力された場合の処理
     if show_data_button and year and month:
@@ -202,8 +204,8 @@ def main():
                     .reset_index()
                 )
                 # 変動係数（CV）を計算し、標準偏差の次の列に挿入
-                stat_df["変動係数(%)"] = stat_df["std"] / stat_df["mean"
-                                                              ].abs() * 100
+                stat_df["変動係数(%)"
+                        ] = stat_df["std"] / stat_df["mean"].abs() * 100
                 # 列の順序を調整
                 cols = stat_df.columns.tolist()
                 if "std" in cols and "変動係数(%)" in cols:
@@ -260,13 +262,12 @@ def main():
                     "工程能力指数",
                 ]
                 # 存在する列のみ表示
-                col_order = [col for col in col_order
-                             if col in stat_df.columns]
+                col_order = [col for col in col_order if col in stat_df.columns]
                 stat_df = stat_df[col_order]
                 # 列名を日本語に
                 stat_df = stat_df.rename(columns={"Measurement_Item": "項目名"})
-                st.markdown("#### SD換算値 基本統計量")
-                st.dataframe(stat_df, use_container_width=True)
+                st.markdown(f"####  {year}年{month}月：基本統計量（SD換算）")
+                st.dataframe(stat_df, use_container_width=True, hide_index=True)
         else:
             st.info("SD換算データがありません。")
 
@@ -317,11 +318,28 @@ def main():
                     "原因",
                     "CAPA",
                 ]
-                display_cols = [col for col in display_cols
-                                if col in group.columns]
+                display_cols = [col for col in display_cols if col in group.columns]
                 st.dataframe(group[display_cols], use_container_width=True)
         else:
             st.info("該当期間のデータがありません。")
+
+        # グラフ・リストをエクセル出力ボタンがクリックされた場合の処理
+        if export_data_button and year and month:
+            try:
+                # メモリ上にエクセルファイルを保存
+                output = io.BytesIO()
+                wb = create_excel_report(df, year, month, return_wb=True)
+                wb.save(output)
+                output.seek(0)
+                st.success("グラフ・リストのエクセルファイルが作成されました。")
+                st.download_button(
+                    label="グラフ・リストをエクセルダウンロード",
+                    data=output,
+                    file_name=f"統計学的精度管理_{year}年{month.zfill(2)}月.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+            except Exception as e:
+                st.error(f"エクセルファイルの作成中にエラーが発生しました: {str(e)}")
 
     # エクセル出力ボタンがクリックされた場合の処理
     if export_excel_button and year and month:

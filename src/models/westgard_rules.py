@@ -375,11 +375,26 @@ class MultiRule:
                     result["Judgment"] = "Fail"
                     # 違反したルールを抽出
                     error_rules = [
-                        rule for rule, violated in
-                        westgard_rules.items() if violated
+                        rule for rule, violated in westgard_rules.items()
+                        if violated
                     ]
                     if error_type:
                         error_rules.append("Type_error")
+
+                    # Type_errorの判定ロジックを追加
+                    # 1-3s、2-2s、R-4sの場合は「管理限界外」
+                    if (
+                        westgard_rules["1-3s"]
+                        or westgard_rules["2-2s"]
+                        or westgard_rules["R-4s"]
+                    ):
+                        result["Type_error"] = "管理限界外"
+                    # 4-1s、8xの場合は「警告」
+                    elif westgard_rules["4-1s"] or westgard_rules["8x"]:
+                        result["Type_error"] = "警告"
+                    # 1-2sの場合は「注意」
+                    elif westgard_rules["1-2s"]:
+                        result["Type_error"] = "注意"
 
                     # エラータイプを設定
                     if westgard_rules["1-3s"] or westgard_rules["R-4s"]:
@@ -556,7 +571,7 @@ def check_westgard_rules(
         "date": data.get("Date_Time", pd.Series()).tolist(),
         "measurer": data.get("Measurer", pd.Series()).tolist(),
         "lot_number": data.get("Lot_Number", pd.Series()).tolist(),
-        "dye": ["-"] * len(data),
+        "dye": data.get("Dye", pd.Series()).tolist(),
         "historical_sd_conversions": historical_sd_conversions,
     }
 

@@ -237,7 +237,8 @@ class QCDataAccess:
             return False
 
     def get_violated_rules(self,
-                           item_code: Optional[str] = None) -> pd.DataFrame:
+                           item_code: Optional[str] = None
+                           ) -> pd.DataFrame:
         """違反ルールの取得"""
         try:
             query = """
@@ -554,7 +555,6 @@ def main():
                     st.subheader("検査実施状況")
                     columns_to_show = [
                         "Date_Time",
-                        "Measurer",
                         "Item_Code",
                         "Batch",
                         "standard_usage",
@@ -563,13 +563,12 @@ def main():
                         "measuring_instrument_usage",
                     ]
                     available_cols = [
-                        col for col in columns_to_show
-                        if col in status_log_df.columns
+                        col for col in columns_to_show if
+                        col in status_log_df.columns
                     ]
                     display_status_log = status_log_df[available_cols].copy()
                     display_status_log.columns = [
                         "日時",
-                        "担当者",
                         "項目コード",
                         "バッチ",
                         "標準物質使用状況",
@@ -577,7 +576,7 @@ def main():
                         "測定試薬使用状況",
                         "測定機器使用状況",
                     ][: len(display_status_log.columns)]
-                    st.dataframe(display_status_log)
+                    st.dataframe(display_status_log, hide_index=True)
                 else:
                     st.info("該当ファイルのステータスログはありません。")
 
@@ -596,15 +595,10 @@ def main():
                         filtered_multi_rule_df = multi_rule_df.copy()
 
                     columns_to_show = [
-                        "Item_Code",
-                        "Batch",
-                        "Model",
-                        "Date_Time",
                         "Judgment",
                         "Error_type",
                         "Type_error",
                         "Violated_rule",
-                        "measurer",
                         "Type",
                         "Dye",
                         "Ct",
@@ -615,18 +609,13 @@ def main():
                     for col in columns_to_show:
                         if col in filtered_multi_rule_df.columns:
                             available_cols.append(col)
-                    display_multi_rule = filtered_multi_rule_df[
-                        available_cols].copy()
+                    display_multi_rule = filtered_multi_rule_df[available_cols
+                                                                ].copy()
                     jp_columns = [
-                        "項目コード",
-                        "バッチ",
-                        "機種",
-                        "日時",
                         "判定",
                         "誤差タイプ",
                         "エラータイプ",
                         "違反ルール",
-                        "測定者",
                         "タイプ",
                         "Dye",
                         "Ct値",
@@ -637,7 +626,7 @@ def main():
                         : len(display_multi_rule.columns)
                     ]
                     if not display_multi_rule.empty:
-                        st.dataframe(display_multi_rule)
+                        st.dataframe(display_multi_rule, hide_index=True)
                     else:
                         st.info("該当するデータがありません。")
                 else:

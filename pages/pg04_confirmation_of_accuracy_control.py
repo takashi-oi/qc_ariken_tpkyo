@@ -154,10 +154,14 @@ class DatabaseManager:
 
     def fetch_data(
         self, start_date: str, end_date: str
-    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """QCデータを取得し、セッションステートに格納"""
         query_qc = """
-            SELECT Date_Time AS date_time, Type, SD_Conversion AS sd_conversion
+            SELECT
+                Date_Time AS date_time,
+                Batch,
+                Type,
+                SD_Conversion AS sd_conversion
             FROM table_qc_pc
             WHERE Date_Time BETWEEN ? AND ?
             ORDER BY Date_Time DESC
@@ -170,6 +174,11 @@ class DatabaseManager:
             WHERE Date_Time BETWEEN ? AND ?
             ORDER BY Date_Time DESC
         """
+        query_act_log = """
+            SELECT File_Name, Measurer, Type, Cause, CAPA
+            FROM table_qc_act_log
+            ORDER BY File_Name DESC
+        """
         try:
             with self.get_connection() as conn:
                 qc_data = pd.read_sql_query(
@@ -178,17 +187,45 @@ class DatabaseManager:
                     params=(start_date, end_date),
                     parse_dates=["date_time"],
                 )
+
+                # date_timeとBatchを結合し、日付形式をyy/mm/ddに変更
+                if not qc_data.empty and "date_time" in qc_data.columns:
+                    # Batchカラムが存在するかチェック
+                    if "Batch" in qc_data.columns:
+                        qc_data["date_time_batch"] = (
+                            qc_data["date_time"].dt.strftime("%y/%m/%d")
+                            + ":"
+                            + qc_data["Batch"].astype(str)
+                        )
+                    else:
+                        # Batchカラムがない場合は日付のみ
+                        qc_data["date_time_batch"] = qc_data["date_time"
+                                                             ].dt.strftime(
+                            "%y/%m/%d"
+                        )
+
+                    # sd_conversionを小数点第3位まで表示
+                    if "sd_conversion" in qc_data.columns:
+                        qc_data["sd_conversion"] = qc_data["sd_conversion"
+                                                           ].round(3)
+
                 status_data = pd.read_sql_query(
                     query_status,
                     conn,
                     params=(start_date, end_date),
                     parse_dates=["date_time"],
                 )
-                return qc_data, status_data
+
+                act_log_data = pd.read_sql_query(
+                    query_act_log,
+                    conn,
+                )
+
+                return qc_data, status_data, act_log_data
         except (sqlite3.Error, pd.errors.DatabaseError) as e:
             logger.error("データベースエラー: %s", e)
             st.error(f"データの取得に失敗しました: {e}")
-            return pd.DataFrame(), pd.DataFrame()
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
     def save_qc_check(
         self,
@@ -244,7 +281,12 @@ class DatabaseManager:
                 # カラム情報をDataFrameに変換
                 schema_df = pd.DataFrame(
                     columns,
-                    columns=["cid", "name", "type", "notnull", "dflt_value", "pk"],
+                    columns=["cid",
+                             "name",
+                             "type",
+                             "notnull",
+                             "dflt_value",
+                             "pk"],
                 )
                 return schema_df
         except sqlite3.Error as e:
@@ -256,14 +298,20 @@ class DatabaseManager:
 class QCCheckUI:
     """QCチェックのUI管理"""
 
-    def __init__(self, db_manager: DatabaseManager, today: date = date.today()):
+    def __init__(self,
+                 db_manager: DatabaseManager,
+                 today: date = date.today()):
         self.db_manager = db_manager
         self._today = today
 
     def init_session_state(self) -> None:
         """セッション状態を初期化"""
         if "check_data" not in st.session_state:
-            st.session_state["check_data"] = (pd.DataFrame(), pd.DataFrame())
+            st.session_state["check_data"] = (
+                pd.DataFrame(),
+                pd.DataFrame(),
+                pd.DataFrame(),
+            )
 
     def render_sidebar(self) -> tuple[str, str, str, str]:
         """サイドバーのUIを描画"""
@@ -292,7 +340,7 @@ class QCCheckUI:
                 ],
                 index=0,
             )
-            measurer = st.text_input("精度管理評価者名  ").strip() or "未入力"
+            measurer = st.text_input("精度管理評価者名").strip() or "未入力"
             # 変数に格納してから返す
             if isinstance(start_date, date):
                 start_date_str = start_date.strftime("%Y/%m/%d")
@@ -318,13 +366,15 @@ class QCCheckUI:
         )
 
         # check_dataがタプルであることを確認
-        if not isinstance(check_data, tuple) or len(check_data) != 2:
+        if not isinstance(check_data, tuple) or len(check_data) != 3:
             st.warning("データが正しく取得できていません")
             return []
 
-        qc_data, status_data = check_data  # ここでデフォルト値を設定
+        qc_data, status_data, act_log_data = check_data  # ここでデフォルト値を設定
 
-        if qc_data is None or (isinstance(qc_data, pd.DataFrame) and qc_data.empty):
+        if qc_data is None or (isinstance(qc_data,
+                                          pd.DataFrame
+                                          ) and qc_data.empty):
             st.warning("QCデータがありません")
             return []
 
@@ -341,15 +391,43 @@ class QCCheckUI:
 
             # QCデータの詳細をExpander内に表示
             with st.expander("QCデータの詳細を表示"):
-                st.dataframe(qc_data)
+                # 表示用のカラムを選択（存在するカラムのみ）
+                available_columns = []
+                column_mapping = {
+                    "date_time_batch": "日時:Batch",
+                    "Type": "Type",
+                    "sd_conversion": "SD換算",
+                }
+
+                for col in ["date_time_batch", "Type", "sd_conversion"]:
+                    if col in qc_data.columns:
+                        available_columns.append(col)
+
+                if available_columns:
+                    display_data = qc_data[available_columns].copy()
+                    # カラム名を日本語に変更
+                    display_data.columns = [
+                        column_mapping[col] for col in available_columns
+                    ]
+                    st.dataframe(display_data, hide_index=True)
+                else:
+                    st.warning("表示可能なデータがありません")
 
             check_logs = []
             for type_name, group in qc_data.groupby("Type"):
                 with st.expander(f"Type: {type_name}", expanded=True):
-                    st.line_chart(group.set_index("date_time")["sd_conversion"])
+                    # date_time_batchカラムが存在する場合はそれを使用、なければdate_timeを使用
+                    if "date_time_batch" in group.columns:
+                        st.line_chart(
+                            group.set_index("date_time_batch")["sd_conversion"]
+                        )
+                    else:
+                        st.line_chart(group.set_index("date_time"
+                                                      )["sd_conversion"])
 
                     # ステータスデータを表示
-                    status_group = status_data[status_data["status_type"] == type_name]
+                    status_group = status_data[status_data["status_type"
+                                                           ] == type_name]
                     if not status_group.empty:
                         st.write("ステータスデータ:")
                         st.dataframe(status_group)
@@ -403,29 +481,100 @@ def main() -> None:
         # table_qc_status_log のデータフレームを表示
         st.subheader("標準物質／管理試料／検査試薬／検査機器：使用状況")
         check_data = st.session_state.get(
-            "check_data", (pd.DataFrame(), pd.DataFrame())
+            "check_data", (pd.DataFrame(), pd.DataFrame(), pd.DataFrame())
         )
         status_data = check_data[1]
 
         if not status_data.empty:
-            st.dataframe(
-                status_data.rename(
-                    columns={
-                        "Date_Time": "日付:時間",
-                        "Measurer": "測定者",
-                        "Item_Code": "項目コード",
-                        "Batch": "バッチ",
-                        "standard_usage": "標準物質：使用状況",
-                        "control_usage": "管理試料：使用量状況",
-                        "reagents_usage": "検査試薬：使用状況",
-                        "measuring_instrument_usage": "測定機器：使用状況",
-                        "File_Name": "ファイル名",
-                        "Type": "タイプ",
-                    }
-                )
-            )
+            # 項目コードとdate_timeでソート
+            if (
+                "Item_Code" in status_data.columns
+                and "date_time" in status_data.columns
+            ):
+                status_data = status_data.sort_values(["Item_Code",
+                                                       "date_time"])
+
+            # 表示用のカラムを選択（指定された順序）
+            display_columns = [
+                "Item_Code",
+                "date_time",
+                "Batch",
+                "standard_usage",
+                "control_usage",
+                "reagents_usage",
+                "measuring_instrument_usage",
+            ]
+
+            # 存在するカラムのみを選択
+            available_columns = [
+                col for col in display_columns if col in status_data.columns
+            ]
+
+            if available_columns:
+                display_data = status_data[available_columns].copy()
+                # カラム名を日本語に変更
+                column_mapping = {
+                    "Item_Code": "項目コード",
+                    "date_time": "日時",
+                    "Batch": "バッチ",
+                    "standard_usage": "標準物質：使用状況",
+                    "control_usage": "管理試料：使用量状況",
+                    "reagents_usage": "検査試薬：使用状況",
+                    "measuring_instrument_usage": "測定機器：使用状況",
+                }
+                display_data.columns = [
+                    column_mapping[col] for col in available_columns
+                ]
+                st.dataframe(display_data, hide_index=True)
+            else:
+                st.warning("表示可能なデータがありません")
         else:
             st.write("table_qc_status_log にデータが存在しません。")
+
+        # table_qc_act_log のデータフレームを表示
+        st.subheader("QC対応記録")
+        act_log_data = check_data[2]
+
+        if not act_log_data.empty:
+            # 表示用のカラムを選択
+            display_columns = [
+                "File_Name",
+                "Measurer",
+                "Type",
+                "Cause",
+                "CAPA",
+            ]
+
+            # 存在するカラムのみを選択
+            available_columns = [
+                col for col in display_columns if col in act_log_data.columns
+            ]
+
+            if available_columns:
+                display_data = act_log_data[available_columns].copy()
+                # カラム名を日本語に変更
+                column_mapping = {
+                    "File_Name": "ファイル名",
+                    "Measurer": "測定者",
+                    "Type": "タイプ",
+                    "Cause": "原因",
+                    "CAPA": "CAPA",
+                }
+                display_data.columns = [
+                    column_mapping[col] for col in available_columns
+                ]
+
+                # Noneの値を「-」に置換
+                if "原因" in display_data.columns:
+                    display_data["原因"] = display_data["原因"].fillna("-")
+                if "CAPA" in display_data.columns:
+                    display_data["CAPA"] = display_data["CAPA"].fillna("-")
+
+                st.dataframe(display_data, hide_index=True)
+            else:
+                st.warning("表示可能なデータがありません")
+        else:
+            st.write("table_qc_act_log にデータが存在しません。")
 
         # 保存ボタンを追加
         if st.button("チェック結果を保存"):
