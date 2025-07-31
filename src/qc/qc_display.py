@@ -11,20 +11,32 @@ from src.utils.file_processing import ProcessedData
 class QCDisplay:
     """QC表示クラス"""
 
-    async def display_data_summary(self, data: ProcessedData) -> None:
+    async def display_data_summary(self,
+                                   data: ProcessedData
+                                   ) -> None:
         """データ概要の表示（最適化版）"""
         metrics = {
             "ファイル情報": (
-                len(data.file_info) if isinstance(data.file_info, pd.DataFrame) else 0
+                len(data.file_info)
+                if isinstance(data.file_info,
+                              pd.DataFrame)
+                else 0
             ),
             "ICデータ": (
-                len(data.ic_data) if isinstance(data.ic_data, pd.DataFrame) else 0
+                len(data.ic_data)
+                if isinstance(data.ic_data,
+                              pd.DataFrame)
+                else 0
             ),
             "NCデータ": (
-                len(data.nc_data) if isinstance(data.nc_data, pd.DataFrame) else 0
+                len(data.nc_data)
+                if isinstance(data.nc_data, pd.DataFrame)
+                else 0
             ),
             "PCデータ": (
-                len(data.pc_data) if isinstance(data.pc_data, pd.DataFrame) else 0
+                len(data.pc_data)
+                if isinstance(data.pc_data, pd.DataFrame)
+                else 0
             ),
         }
 
@@ -33,7 +45,9 @@ class QCDisplay:
             with col:
                 st.metric(label, f"{value}件")
 
-    async def display_detailed_data(self, data: ProcessedData) -> None:
+    async def display_detailed_data(self,
+                                    data: ProcessedData
+                                    ) -> None:
         """詳細データの表示（最適化版）"""
         data_sections = {
             "ファイル情報": data.file_info,
@@ -76,7 +90,41 @@ class QCDisplay:
                             ).dt.strftime("%y/%m/%d")
 
                         st.dataframe(
-                            display_df, use_container_width=True, hide_index=True
+                            display_df,
+                            use_container_width=True,
+                            hide_index=True
+                        )
+                    elif (
+                        title == "Inner Control Data"
+                        or title == "Negative Control Data"
+                    ):
+                        # 指定されたカラム順序で表示
+                        display_columns = [
+                            "Verdict",
+                            "Item_Code",
+                            "Date_Time",
+                            "Batch",
+                            "Model",
+                            "Measurer",
+                            "Dye",
+                            "Type",
+                            "Lot_Number",
+                            "Sample Type",
+                            "Ct",
+                            "CL",
+                            "SD",
+                            "File_Name",
+                        ]
+                        # 存在するカラムのみ選択
+                        available_columns = [
+                            col for col in display_columns if col in df.columns
+                        ]
+                        display_df = df[available_columns].copy()
+
+                        st.dataframe(
+                            display_df,
+                            use_container_width=True,
+                            hide_index=True
                         )
                     else:
                         st.dataframe(df, use_container_width=True)
