@@ -118,7 +118,7 @@ def main():
     export_excel_button = st.sidebar.button("内部精度管理台帳出力")
 
     # エクセル出力ボタンを追加
-    export_data_button = st.sidebar.button("グラフ・リストをエクセル出力")
+    # export_data_button = st.sidebar.button("グラフ・リストをエクセル出力")
 
     # 年月とボタンが両方入力された場合の処理
     if show_data_button and year and month:
@@ -262,12 +262,15 @@ def main():
                     "工程能力指数",
                 ]
                 # 存在する列のみ表示
-                col_order = [col for col in col_order if col in stat_df.columns]
+                col_order = [col for col in col_order if
+                             col in stat_df.columns]
                 stat_df = stat_df[col_order]
                 # 列名を日本語に
                 stat_df = stat_df.rename(columns={"Measurement_Item": "項目名"})
                 st.markdown(f"####  {year}年{month}月：基本統計量（SD換算）")
-                st.dataframe(stat_df, use_container_width=True, hide_index=True)
+                st.dataframe(stat_df,
+                             use_container_width=True,
+                             hide_index=True)
         else:
             st.info("SD換算データがありません。")
 
@@ -318,12 +321,13 @@ def main():
                     "原因",
                     "CAPA",
                 ]
-                display_cols = [col for col in display_cols if col in group.columns]
+                display_cols = [col for col in display_cols if
+                                col in group.columns]
                 st.dataframe(group[display_cols], use_container_width=True)
         else:
             st.info("該当期間のデータがありません。")
 
-        # グラフ・リストをエクセル出力ボタンがクリックされた場合の処理
+    '''     # グラフ・リストをエクセル出力ボタンがクリックされた場合の処理
         if export_data_button and year and month:
             try:
                 # メモリ上にエクセルファイルを保存
@@ -340,7 +344,7 @@ def main():
                 )
             except Exception as e:
                 st.error(f"エクセルファイルの作成中にエラーが発生しました: {str(e)}")
-
+ '''
     # エクセル出力ボタンがクリックされた場合の処理
     if export_excel_button and year and month:
         _, last_day = calendar.monthrange(int(year), int(month))
