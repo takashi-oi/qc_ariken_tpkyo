@@ -222,7 +222,7 @@ class QCDataProcessor:
                                 type_hist = type_hist.sort_values(
                                     "Date_Time", ascending=False
                                 ).head(10)
-                                st.write(f"#### {type_name} 解析結果")
+                                st.write(f"#### {type_name} 解析結果（最大10レコード）")
 
                                 if not type_hist.empty:
                                     # グラフ表示用データの準備
@@ -259,16 +259,17 @@ class QCDataProcessor:
 
                                             # データ一覧表示（最大10レコード）
                                             st.write(
-                                                "##### Positive Control List"
-                                                )
+                                                "##### データ一覧（最大10レコード）"
+                                            )
                                             # カラム順を指定
                                             display_columns = [
-                                                "Judgment",
+                                                "Item_Code",
                                                 "Date_Time",
                                                 "Batch",
                                                 "Model",
                                                 "Type",
                                                 "Lot_Number",
+                                                "Judgment",
                                                 "SD_Conversion",
                                             ]
                                             display_columns = [
@@ -290,7 +291,7 @@ class QCDataProcessor:
                                             st.dataframe(
                                                 chart_df,
                                                 use_container_width=True,
-                                                hide_index=True,
+                                                hide_index=True
                                             )
                                         else:
                                             st.info(
@@ -300,7 +301,9 @@ class QCDataProcessor:
                                         st.info("Date_Timeカラムが存在しません。")
 
                                     # QCチェックログ（Failのみ、最大10レコード）
-                                    st.write("##### QCチェックログ（異常判定のみ）")
+                                    st.write(
+                                        "##### QCチェックログ（異常のみ、最大10レコード）"
+                                    )
                                     fail_log = type_hist[
                                         type_hist["Judgment"] == "Fail"
                                     ].head(10)
@@ -346,7 +349,6 @@ class QCDataProcessor:
                                         )
                                     else:
                                         st.info("異常なQCチェックログはありません。")
-
                                 else:
                                     st.info(f"{type_name}のデータがありません。")
 

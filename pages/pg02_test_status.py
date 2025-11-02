@@ -196,8 +196,9 @@ with st.sidebar:  # サイドバーにウィジェットを配置
     try:  # 実施者名の入力と保存を試みる
         # 検査要員データをExcelファイルから読み込む
         employee_data = pd.read_excel("data/master/employee_code.xlsx")
+        measurer_list = [""] + employee_data["Member's_Name"].tolist()
         selected_measurer = st.selectbox(  # ドロップダウンリスト
-            "測定者名", employee_data["Member's_Name"].tolist()
+            "測定者名", measurer_list, index=0
         )  # ラベルと選択肢
         # 選択された測定者をセッション状態に保存
         st.session_state["implementor"] = selected_measurer

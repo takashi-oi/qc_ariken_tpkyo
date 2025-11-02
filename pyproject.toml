@@ -1,3 +1,23 @@
+[project]
+name = "qc-ariken-tokyo"
+version = "1.0.0"
+description = "有研東京検査所 精度管理システム"
+readme = "UV_README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "streamlit>=1.47.0",
+    "pandas>=2.3.0",
+    "numpy>=2.3.0",
+    "openpyxl>=3.1.0",
+    "plotly>=6.0.0",
+    "pillow>=11.0.0",
+    "reportlab>=4.4.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [tool.pylint.messages_control]
 disable = [
     "C0114",  # missing-module-docstring
@@ -15,7 +35,7 @@ disable = [
 max-line-length = 120
 
 [tool.pylint.master]
-ignore = ["venv", "__pycache__", ".git"]
+ignore = ["venv", ".venv", "__pycache__", ".git"]
 
 [tool.pylint.basic]
 good-names = ["i", "j", "k", "ex", "Run", "_", "id", "db"] 

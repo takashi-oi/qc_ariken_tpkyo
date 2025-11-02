@@ -84,8 +84,9 @@ with st.sidebar:
     # 実施者名の入力と保存
     try:
         employee_data = pd.read_excel("data/master/employee_code.xlsx")
+        measurer_list = [""] + employee_data["Member's_Name"].tolist()
         selected_measurer = st.selectbox(
-            "測定者名", employee_data["Member's_Name"].tolist())
+            "測定者名", measurer_list, index=0)
         st.session_state['implementor'] = selected_measurer
     except FileNotFoundError:
         st.error(

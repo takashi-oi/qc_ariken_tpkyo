@@ -30,11 +30,12 @@ class QCCheckApp:
                     "QCデータファイルをアップロード", type=["xlsx"]
                 )
                 employee_data = pd.read_excel("data/master/employee_code.xlsx")
+                measurer_list = [""] + employee_data["Member's_Name"].tolist()
                 measurer = st.selectbox(
-                    "測定者名を選択", employee_data["Member's_Name"].tolist()
+                    "測定者名を選択", measurer_list, index=0
                 )
 
-            if uploaded_file and measurer:
+            if uploaded_file and measurer and measurer != "":
                 qc_data = await self.data_importer.process_and_display(
                     uploaded_file, measurer
                 )

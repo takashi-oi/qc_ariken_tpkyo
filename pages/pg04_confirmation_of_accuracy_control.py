@@ -199,15 +199,13 @@ class DatabaseManager:
                         )
                     else:
                         # Batchカラムがない場合は日付のみ
-                        qc_data["date_time_batch"] = qc_data["date_time"
-                                                             ].dt.strftime(
+                        qc_data["date_time_batch"] = qc_data["date_time"].dt.strftime(
                             "%y/%m/%d"
                         )
 
                     # sd_conversionを小数点第3位まで表示
                     if "sd_conversion" in qc_data.columns:
-                        qc_data["sd_conversion"] = qc_data["sd_conversion"
-                                                           ].round(3)
+                        qc_data["sd_conversion"] = qc_data["sd_conversion"].round(3)
 
                 status_data = pd.read_sql_query(
                     query_status,
@@ -281,12 +279,7 @@ class DatabaseManager:
                 # カラム情報をDataFrameに変換
                 schema_df = pd.DataFrame(
                     columns,
-                    columns=["cid",
-                             "name",
-                             "type",
-                             "notnull",
-                             "dflt_value",
-                             "pk"],
+                    columns=["cid", "name", "type", "notnull", "dflt_value", "pk"],
                 )
                 return schema_df
         except sqlite3.Error as e:
@@ -298,9 +291,7 @@ class DatabaseManager:
 class QCCheckUI:
     """QCチェックのUI管理"""
 
-    def __init__(self,
-                 db_manager: DatabaseManager,
-                 today: date = date.today()):
+    def __init__(self, db_manager: DatabaseManager, today: date = date.today()):
         self.db_manager = db_manager
         self._today = today
 
@@ -329,15 +320,16 @@ class QCCheckUI:
                 "開始日", value=date(start_year, start_month, 1), key="start_date"
             )
             end_date = st.date_input("終了日", value=self._today, key="end_date")
+            measurement_list = [""] + [
+                "精度管理担当者",
+                "遺伝子関連・染色体検査の精度の確保に係る責任者",
+                "精度管理責任者",
+                "管理者",
+                "指導監督医",
+            ]
             measurement = st.selectbox(
                 "責任区分",
-                [
-                    "精度管理担当者",
-                    "遺伝子関連・染色体検査の精度の確保に係る責任者",
-                    "精度管理責任者",
-                    "管理者",
-                    "指導監督医",
-                ],
+                measurement_list,
                 index=0,
             )
             measurer = st.text_input("精度管理評価者名").strip() or "未入力"
@@ -372,9 +364,7 @@ class QCCheckUI:
 
         qc_data, status_data, act_log_data = check_data  # ここでデフォルト値を設定
 
-        if qc_data is None or (isinstance(qc_data,
-                                          pd.DataFrame
-                                          ) and qc_data.empty):
+        if qc_data is None or (isinstance(qc_data, pd.DataFrame) and qc_data.empty):
             st.warning("QCデータがありません")
             return []
 
@@ -422,12 +412,10 @@ class QCCheckUI:
                             group.set_index("date_time_batch")["sd_conversion"]
                         )
                     else:
-                        st.line_chart(group.set_index("date_time"
-                                                      )["sd_conversion"])
+                        st.line_chart(group.set_index("date_time")["sd_conversion"])
 
                     # ステータスデータを表示
-                    status_group = status_data[status_data["status_type"
-                                                           ] == type_name]
+                    status_group = status_data[status_data["status_type"] == type_name]
                     if not status_group.empty:
                         st.write("ステータスデータ:")
                         st.dataframe(status_group)
@@ -491,8 +479,7 @@ def main() -> None:
                 "Item_Code" in status_data.columns
                 and "date_time" in status_data.columns
             ):
-                status_data = status_data.sort_values(["Item_Code",
-                                                       "date_time"])
+                status_data = status_data.sort_values(["Item_Code", "date_time"])
 
             # 表示用のカラムを選択（指定された順序）
             display_columns = [

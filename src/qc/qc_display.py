@@ -11,7 +11,9 @@ from src.utils.file_processing import ProcessedData
 class QCDisplay:
     """QC表示クラス"""
 
-    async def display_data_summary(self, data: ProcessedData) -> None:
+    async def display_data_summary(self,
+                                   data: ProcessedData
+                                   ) -> None:
         """データ概要の表示（最適化版）"""
         metrics = {
             "ファイル情報": (
@@ -41,7 +43,9 @@ class QCDisplay:
             with col:
                 st.metric(label, f"{value}件")
 
-    async def display_detailed_data(self, data: ProcessedData) -> None:
+    async def display_detailed_data(self,
+                                    data: ProcessedData
+                                    ) -> None:
         """詳細データの表示（最適化版）"""
         data_sections = {
             "ファイル情報": data.file_info,
@@ -82,35 +86,6 @@ class QCDisplay:
                             display_df["実施日時（yy/mm/dd）"] = pd.to_datetime(
                                 display_df["実施日時（yy/mm/dd）"]
                             ).dt.strftime("%y/%m/%d")
-
-                        st.dataframe(
-                            display_df,
-                            use_container_width=True,
-                            hide_index=True
-                        )
-                    elif title == "Positive Control Data":
-                        # Positive Control Data専用のカラム順序で表示
-                        display_columns = [
-                            "SD_Conversion",
-                            "Item_Code",
-                            "Date_Time",
-                            "Batch",
-                            "Model",
-                            "Dye",
-                            "Type",
-                            "Lot_Number",
-                            "Sample",
-                            "Ct",
-                            "CL",
-                            "SD",
-                            "Measurer",
-                            "File_Name",
-                        ]
-                        # 存在するカラムのみ選択
-                        available_columns = [
-                            col for col in display_columns if col in df.columns
-                        ]
-                        display_df = df[available_columns].copy()
 
                         st.dataframe(
                             display_df,

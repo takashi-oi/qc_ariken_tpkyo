@@ -85,9 +85,11 @@ class QCDataApp:
             with st.sidebar:
                 employee_data = pd.read_excel(
                     "data/master/employee_code.xlsx")
+                measurer_list = [""] + employee_data["Member's_Name"].tolist()
                 measurer = st.selectbox(
                     "測定者名",
-                    employee_data["Member's_Name"].tolist()
+                    measurer_list,
+                    index=0
                 )
                 uploaded_file = st.file_uploader(
                     "測定結果Excelファイルをアップロードして下さい",
