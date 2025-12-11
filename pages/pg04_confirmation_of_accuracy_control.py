@@ -5,7 +5,7 @@
 
 import logging
 import os
-import sqlite3
+import duckdb
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
@@ -32,7 +32,7 @@ class DatabaseManager:
 
     def __init__(self, config: DatabaseConfig = DatabaseConfig()):
         self.config = config
-        self._connection_pool: List[sqlite3.Connection] = []
+        self._connection_pool: List[duckdb.DuckDBPyConnection] = []
         self.ensure_database_path()
         self.create_tables()  # テーブル作成メソッドを呼び出す
         self.add_type_column_if_not_exists()  # Typeカラム追加メソッドを呼び出す
@@ -108,7 +108,7 @@ class DatabaseManager:
                         "ALTER TABLE table_qc_status_log ADD COLUMN Type TEXT;"
                     )
                     logger.info("Type カラムを追加しました。")
-                except sqlite3.Error as e:
+                except duckdb.Error as e:
                     logger.error("Type カラムの追加に失敗しました: %s", e)
                     st.error(f"Type カラムの追加に失敗しました: {e}")
 
@@ -121,21 +121,21 @@ class DatabaseManager:
                 try:
                     conn.execute("ALTER TABLE table_qc_check_log ADD COLUMN date TEXT;")
                     logger.info("date カラムを追加しました。")
-                except sqlite3.Error as e:
+                except duckdb.Error as e:
                     logger.error("date カラムの追加に失敗しました: %s", e)
                     st.error(f"date カラムの追加に失敗しました: {e}")
 
     @contextmanager
-    def get_connection(self) -> Generator[sqlite3.Connection, None, None]:
+    def get_connection(self) -> Generator[duckdb.DuckDBPyConnection, None, None]:
         """データベース接続のコンテキスト管理"""
         conn = None
         try:
             if self._connection_pool:
                 conn = self._connection_pool.pop()
             else:
-                conn = sqlite3.connect(self.config.path)
+                conn = duckdb.connect(self.config.path)
             yield conn
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             logger.error("データベース接続エラー: %s", str(e))
             st.error("データベースに接続できません")
             raise
@@ -144,12 +144,12 @@ class DatabaseManager:
                 try:
                     conn.commit()
                     self._connection_pool.append(conn)
-                except sqlite3.Error as e:
+                except duckdb.Error as e:
                     logger.error("接続のクローズに失敗: %s", e)
                     if conn is not None:
                         try:
                             conn.close()
-                        except sqlite3.Error as close_error:
+                        except duckdb.Error as close_error:
                             logger.error("接続のクローズに失敗: %s", close_error)
 
     def fetch_data(
@@ -220,7 +220,7 @@ class DatabaseManager:
                 )
 
                 return qc_data, status_data, act_log_data
-        except (sqlite3.Error, pd.errors.DatabaseError) as e:
+        except (duckdb.Error, pd.errors.DatabaseError) as e:
             logger.error("データベースエラー: %s", e)
             st.error(f"データの取得に失敗しました: {e}")
             return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
@@ -572,7 +572,7 @@ def main() -> None:
             else:
                 st.error("チェック結果の保存に失敗しました")
 
-    except (sqlite3.Error, ValueError, TypeError) as e:
+    except (duckdb.Error, ValueError, TypeError) as e:
         logger.error("アプリケーションエラー: %s", e)
         st.error(f"アプリケーションエラー: {e}")
 

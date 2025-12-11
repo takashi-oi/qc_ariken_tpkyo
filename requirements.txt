@@ -80,3 +80,5 @@ urllib3==2.5.0
 wcwidth==0.2.13
 webencodings==0.5.1
 wheel==0.45.1
+duckdb>=1.0.0
+duckdb-engine>=0.12.0

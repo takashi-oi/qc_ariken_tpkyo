@@ -2,7 +2,7 @@
 QCデータベース操作モジュール
 """
 
-import sqlite3
+import duckdb
 from contextlib import asynccontextmanager
 
 import pandas as pd
@@ -24,15 +24,15 @@ class QCDatabase:
         """エラーハンドリング用コンテキストマネージャ"""
         try:
             yield
-        except sqlite3.IntegrityError as e:
+        except duckdb.IntegrityError as e:
             st.error(f"データベース整合性エラー: {str(e)}")
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             st.error(f"データベースエラー: {str(e)}")
         except (ValueError, TypeError) as e:
             st.error(f"値または型に関するエラーが発生しました: {str(e)}")
         except (OSError, IOError) as e:
             st.error(f"入出力エラーが発生しました: {str(e)}")
-        except (sqlite3.Error, RuntimeError) as e:
+        except (duckdb.Error, RuntimeError) as e:
             st.error(f"予期しないエラーが発生しました: {str(e)}")
 
     async def check_for_duplicates(self, data: ProcessedData) -> bool:

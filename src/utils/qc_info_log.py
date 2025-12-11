@@ -3,7 +3,7 @@
 """
 
 # ライブラリのインポート
-import sqlite3  # SQLiteデータベースを操作するためのライブラリ
+import duckdb  # DuckDBデータベースを操作するためのライブラリ
 from datetime import datetime
 import pandas as pd  # データ操作のためのライブラリ
 import streamlit as st  # Webアプリケーションを作成するためのライブラリ
@@ -163,9 +163,9 @@ with st.sidebar:
             st.session_state.form_submitted = True
             st.success("データベースに正常に登録されました。")
             st.balloons()
-        except sqlite3.IntegrityError:
+        except duckdb.IntegrityError:
             st.error("データが重複しています。既に登録されています。")
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             st.error(
                 f"データベース登録中にエラーが発生しました: {e}"
             )
@@ -201,13 +201,11 @@ async def qc_info_log(
             st.session_state['measurer'] = measurer
 
         # データベース操作
-        with sqlite3.connect(db_path) as conn:
-            cursor = conn.cursor()
-
+        with duckdb.connect(db_path) as conn:
             # テーブル作成
-            cursor.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS table_qc_info_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id INTEGER PRIMARY KEY,
                     item_code TEXT NOT NULL,
                     batch TEXT NOT NULL,
                     model TEXT NOT NULL,
@@ -220,7 +218,7 @@ async def qc_info_log(
             """)
 
             # ログ挿入
-            cursor.execute("""
+            conn.execute("""
                 INSERT INTO table_qc_info_log (
                     item_code, batch, model, date_time,
                     measurer, event_type, details
@@ -230,7 +228,7 @@ async def qc_info_log(
                 measurer, event_type, details
             ))
 
-    except sqlite3.Error as e:
+    except duckdb.Error as e:
         st.error(f"データベースエラー: {str(e)}")
         raise
     except Exception as e:

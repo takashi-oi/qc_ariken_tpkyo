@@ -1,9 +1,9 @@
 """データベーステーブル作成モジュール"""
-import sqlite3
+import duckdb
 from src.config import global_logger as logger
 
 
-def create_tables(conn: sqlite3.Connection) -> None:
+def create_tables(conn: duckdb.DuckDBPyConnection) -> None:
     """必要なテーブルを作成する関数
 
     Args:
@@ -47,6 +47,6 @@ def create_tables(conn: sqlite3.Connection) -> None:
         conn.commit()
         logger.info("テーブルが正常に作成されました")
 
-    except sqlite3.Error as e:
+    except duckdb.Error as e:
         logger.error("テーブル作成中にエラーが発生: %s", e)
         raise

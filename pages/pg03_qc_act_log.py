@@ -5,8 +5,8 @@
 # ロギング機能を提供するライブラリをインポート
 import logging
 
-# SQLiteデータベースを操作するためのライブラリをインポート
-import sqlite3
+# DuckDBデータベースを操作するためのライブラリをインポート
+import duckdb
 
 # データクラスを定義するためのライブラリをインポート
 from dataclasses import dataclass
@@ -51,7 +51,7 @@ class DatabaseManager:
 
     _instance = None  # シングルトンパターン用
     db_path: str  # db_path 属性を追加
-    _conn: sqlite3.Connection  # _conn 属性を追加
+    _conn: duckdb.DuckDBPyConnection  # _conn 属性を追加
 
     def __new__(cls, db_path: str):
         if cls._instance is None:
@@ -60,16 +60,15 @@ class DatabaseManager:
             # データベースディレクトリの存在確認・作成
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
             try:
-                conn = sqlite3.connect(db_path)
-                conn.execute("PRAGMA foreign_keys = ON")
+                conn = duckdb.connect(db_path)
                 logger.info("データベース接続成功: %s", db_path)
                 cls._instance._conn = conn
-            except sqlite3.Error as e:
+            except duckdb.Error as e:
                 logger.error("データベース接続エラー: %s", e)
                 raise
         return cls._instance
 
-    def get_connection(self) -> sqlite3.Connection:
+    def get_connection(self) -> duckdb.DuckDBPyConnection:
         """コネクション取得"""
         return self._conn
 
@@ -88,11 +87,10 @@ class DatabaseInitializer:
     """データベース初期化処理"""
 
     @staticmethod
-    def create_tables(conn: sqlite3.Connection) -> bool:
+    def create_tables(conn: duckdb.DuckDBPyConnection) -> bool:
         """必要なテーブルを作成、成功時True、失敗時Falseを返す"""
         try:
-            cursor = conn.cursor()
-            cursor.executescript(
+            conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS table_qc_multi_rule (
                     Date_Time TEXT,
@@ -121,7 +119,7 @@ class DatabaseInitializer:
             conn.commit()
             logger.info("テーブル作成成功")
             return True
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             logger.error("テーブル作成エラー: %s", e)
             return False
 
@@ -129,15 +127,14 @@ class DatabaseInitializer:
 class QCDataAccess:
     """データアクセス層"""
 
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: duckdb.DuckDBPyConnection):
         self.conn = conn
         self._create_indices()
 
     def _create_indices(self) -> None:
         """パフォーマンス向上のためのインデックスを作成"""
         try:
-            cursor = self.conn.cursor()
-            cursor.executescript(
+            self.conn.executescript(
                 """
                 CREATE INDEX IF NOT EXISTS idx_mulch_rule_date_time ON
                                  table_qc_multi_rule (Date_Time);
@@ -149,14 +146,13 @@ class QCDataAccess:
             )
             self.conn.commit()
             logger.info("インデックス作成成功")
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             logger.warning("インデックス作成エラー: %s", e)
 
     def get_recent_dates(self, item_code: str, limit: int = 5) -> List[str]:
         """最近の実施日を取得"""
         try:
-            cursor = self.conn.cursor()
-            cursor.execute(
+            result = self.conn.execute(
                 """
                 SELECT DISTINCT Date_Time
                 FROM table_qc_multi_rule
@@ -166,8 +162,8 @@ class QCDataAccess:
             """,
                 (item_code, limit),
             )
-            return [row[0] for row in cursor.fetchall()]
-        except sqlite3.Error as e:
+            return [row[0] for row in result.fetchall()]
+        except duckdb.Error as e:
             logger.error("最近の実施日取得エラー: %s", e)
             return []
 
@@ -176,8 +172,7 @@ class QCDataAccess:
     ) -> bool:
         """重複チェック"""
         try:
-            cursor = self.conn.cursor()
-            cursor.execute(
+            result = self.conn.execute(
                 """
                 SELECT 1 FROM table_qc_status_log
                 WHERE Date_Time = ? AND Batch = ? AND Item_Code = ? AND \
@@ -186,8 +181,8 @@ class QCDataAccess:
             """,
                 (date_time, batch, item_code, type_var),
             )
-            return cursor.fetchone() is not None
-        except sqlite3.Error as e:
+            return result.fetchone() is not None
+        except duckdb.Error as e:
             logger.error("重複チェックエラー: %s", e)
             return False
 
@@ -232,7 +227,7 @@ class QCDataAccess:
                 )
             logger.info("1件のデータを登録しました")
             return True
-        except (sqlite3.Error, pd.errors.DatabaseError) as e:
+        except (duckdb.Error, pd.errors.DatabaseError) as e:
             logger.error("データ登録エラー: %s", e)
             return False
 
@@ -252,7 +247,7 @@ class QCDataAccess:
                 params = (item_code,)
 
             return pd.read_sql_query(query, self.conn, params=params)
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             logger.error("違反ルール取得エラー: %s", e)
             return pd.DataFrame()
 
@@ -265,7 +260,7 @@ class QCDataAccess:
                 ORDER BY Date_Time DESC
             """
             return pd.read_sql_query(query, self.conn, params=(file_name,))
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             logger.error("ファイル情報取得エラー: %s", e)
             return pd.DataFrame()
 
@@ -290,28 +285,26 @@ class QCDataAccess:
                 LIMIT ?
             """
             return pd.read_sql_query(query, self.conn, params=(limit,))
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             logger.error("最近の記録取得エラー: %s", e)
             return pd.DataFrame()
 
     def check_duplicate_qc_act_log(self, file_name, employee, qc_type):
         """table_qc_act_logの重複チェックを行う"""
         try:
-            cursor = self.conn.cursor()
-            cursor.execute(
+            result = self.conn.execute(
                 "SELECT 1 FROM table_qc_act_log "
                 "WHERE File_Name = ? AND Measurer = ? AND Type = ? LIMIT 1",
                 (file_name, employee, qc_type),
             )
-            return cursor.fetchone() is not None
-        except sqlite3.Error as e:
+            return result.fetchone() is not None
+        except duckdb.Error as e:
             logger.error("CAPA重複チェックエラー: %s", e)
             return False
 
     def insert_qc_act_log(self, file_name, employee, qc_type, cause, capa):
         try:
-            cursor = self.conn.cursor()
-            cursor.execute(
+            self.conn.execute(
                 "INSERT INTO table_qc_act_log (File_Name, Measurer, \
                     Type, Cause, CAPA) "
                 "VALUES (?, ?, ?, ?, ?)",
@@ -319,7 +312,7 @@ class QCDataAccess:
             )
             self.conn.commit()
             return True
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             logger.error("CAPA登録エラー: %s", e)
             return False
 
@@ -426,7 +419,7 @@ def main():
     # サイドバーに直近で読み込んだファイル名5件をセレクトボックスで表示
     file_name_options = []
     try:
-        conn = sqlite3.connect(Config.db_path)
+        conn = duckdb.connect(Config.db_path)
         query = (
             "SELECT DISTINCT File_Name "
             "FROM table_qc_file_info "
@@ -440,7 +433,7 @@ def main():
             else []
         )
         conn.close()
-    except (sqlite3.Error, pd.errors.DatabaseError, FileNotFoundError) as e:
+    except (duckdb.Error, pd.errors.DatabaseError, FileNotFoundError) as e:
         st.sidebar.warning(f"ファイル名の取得に失敗しました: {e}")
 
     def file_name_format(x):
@@ -480,7 +473,7 @@ def main():
             return
 
         data_access = QCDataAccess(conn)
-    except (sqlite3.Error, FileNotFoundError) as e:
+    except (duckdb.Error, FileNotFoundError) as e:
         st.error(f"データベース接続エラー: {e}")
         logger.error("データベース接続エラー: %s", e)
         return
@@ -506,7 +499,7 @@ def main():
         if selected_file_name:
             try:
                 # table_qc_status_logからデータ抽出
-                conn = sqlite3.connect(Config.db_path)
+                conn = duckdb.connect(Config.db_path)
                 query = (
                     "SELECT * FROM table_qc_status_log "
                     "WHERE File_Name = ? "
@@ -668,7 +661,7 @@ def main():
                     else:
                         st.error("同じ条件のCAPAが既に登録されています。")
 
-            except (sqlite3.Error,
+            except (duckdb.Error,
                     pd.errors.DatabaseError,
                     FileNotFoundError) as e:
                 err_msg = f"データの取得に失敗しました: {e}"

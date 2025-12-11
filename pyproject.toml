@@ -12,6 +12,8 @@ dependencies = [
     "plotly>=6.0.0",
     "pillow>=11.0.0",
     "reportlab>=4.4.0",
+    "duckdb>=1.0.0",
+    "duckdb-engine>=0.12.0",
 ]
 
 [build-system]

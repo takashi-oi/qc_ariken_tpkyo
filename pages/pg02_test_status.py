@@ -1,13 +1,14 @@
 """検査測定状況管理記録登録ページ"""
 
-# SQLite3をインポート
-import sqlite3
+# DuckDBをインポート
+import duckdb
 
 # Pandasをインポート
 import pandas as pd
 
 # Streamlitをインポート
 import streamlit as st
+from sqlalchemy import create_engine
 
 # Configクラスをインポート
 from src.config import Config
@@ -26,7 +27,7 @@ st.set_page_config(page_title="測定状況登録", layout="wide")
 def get_connection():
     """データベース接続を取得する（スレッドセーフ）"""
     # データベースに接続
-    conn = sqlite3.connect(Config.DATABASE_PATH, check_same_thread=False)
+    conn = duckdb.connect(Config.DATABASE_PATH)
     # 接続を返す
     return conn
 
@@ -107,7 +108,7 @@ try:  # データの読み込みを試みる
     # データベースからデータを取得
     file_info_df = pd.read_sql(QUERY, read_conn)
 # データの読み込みに失敗した場合
-except (pd.errors.EmptyDataError, sqlite3.Error):
+except (pd.errors.EmptyDataError, duckdb.Error):
     # エラーメッセージを表示
     st.error("テーブルの読み込みに失敗しました。テーブルが空の可能性があります。")
     # 空のデータフレームを作成
@@ -297,20 +298,24 @@ if st.button("データの確認 / 登録"):  # データの確認 / 登録ボ�
             st.stop()
 
         # データ登録
-        # データをデータベースに登録
-        df_check_list.to_sql(
-            # テーブル名
-            "table_qc_status_log",
-            # データベース接続
-            con=write_conn,
-            if_exists="append",
-            index=False,
-        )
-        st.session_state.form_submitted = True
-        st.success("データベースに正常に登録されました。")
-        st.balloons()
+        # データをデータベースに登録（SQLAlchemyエンジンを使用）
+        engine = create_engine(f"duckdb:///{Config.DATABASE_PATH}")
+        try:
+            df_check_list.to_sql(
+                # テーブル名
+                "table_qc_status_log",
+                # データベース接続
+                con=engine,
+                if_exists="append",
+                index=False,
+            )
+            st.session_state.form_submitted = True
+            st.success("データベースに正常に登録されました。")
+            st.balloons()
+        finally:
+            engine.dispose()
 
-    except sqlite3.IntegrityError:
+    except duckdb.IntegrityError:
         st.error("データが重複しています。既に登録されています。")
-    except sqlite3.Error as e:
+    except duckdb.Error as e:
         st.error(f"データベース登録中にエラーが発生しました: {str(e)}")

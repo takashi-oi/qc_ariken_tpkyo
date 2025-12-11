@@ -5,7 +5,7 @@
 
 import calendar
 import io
-import sqlite3
+import duckdb
 
 import pandas as pd
 import plotly.express as px
@@ -49,7 +49,9 @@ def create_excel_report(df, year, month, return_wb=False):
         pivot = pivot.reset_index()
         # グラフデータをエクセルに書き込み（A1から開始）
         start_row = 1
-        for r in dataframe_to_rows(pivot, index=False, header=True):
+        for r in dataframe_to_rows(pivot,
+                                   index=False,
+                                   header=True):
             ws_chart.append(r)
 
         # 折れ線グラフを作成（画面表示と同じスタイル）
@@ -99,6 +101,95 @@ def create_excel_report(df, year, month, return_wb=False):
     return filename
 
 
+def create_excel_report_by_date_range(
+    df, start_date_str, end_date_str, return_wb=False
+):
+    """期間指定でエクセルファイルを作成する関数"""
+    # ファイル名を生成
+    filename = (
+        f"内部精度管理台帳_{start_date_str.replace('/', '')}_"
+        f"{end_date_str.replace('/', '')}.xlsx"
+    )
+
+    # 新しいワークブックを作成
+    wb = Workbook()
+
+    # デフォルトシートを削除
+    if wb.active:
+        wb.remove(wb.active)
+
+    # データシートを作成
+    ws_data = wb.create_sheet("データ")
+
+    # データフレームをエクセルに書き込み
+    for r in dataframe_to_rows(df, index=False, header=True):
+        ws_data.append(r)
+
+    # グラフシートを作成
+    ws_chart = wb.create_sheet("グラフ")
+
+    # SD換算データがある場合、グラフを作成
+    if not df.empty and "PC/SD換算" in df.columns and "Type" in df.columns:
+        # データを日時でソート
+        df_sorted = df.sort_values("日時")
+        # 日付ごと・Typeごとにピボット
+        pivot = df_sorted.pivot_table(index="日時",
+                                      columns="Type",
+                                      values="PC/SD換算")
+        pivot = pivot.reset_index()
+        # グラフデータをエクセルに書き込み（A1から開始）
+        start_row = 1
+        for r in dataframe_to_rows(pivot, index=False, header=True):
+            ws_chart.append(r)
+
+        # 折れ線グラフを作成（画面表示と同じスタイル）
+        if not pivot.empty:
+            chart = LineChart()
+            chart.title = f"{start_date_str} ～ {end_date_str} SD換算推移（Typeごと）"
+            chart.x_axis.title = "日時"
+            chart.y_axis.title = "SD換算"
+            chart.y_axis.scaling.min = -5
+            chart.y_axis.scaling.max = 5
+
+            # グラフのサイズを設定
+            chart.width = 15  # 幅を設定
+            chart.height = 10  # 高さを設定
+
+            # データ範囲を正確に設定（ヘッダー行を含む）
+            data_start_row = start_row  # ヘッダー行から開始
+            data_end_row = start_row + len(pivot)
+            data_start_col = 2  # B列から（A列は日付）
+            data_end_col = 1 + len(pivot.columns) - 1  # Typeの数分
+
+            # データ範囲（B列以降のSD換算値、ヘッダー行を含む）
+            data_range = Reference(
+                ws_chart,
+                min_col=data_start_col,
+                max_col=data_end_col,
+                min_row=data_start_row,
+                max_row=data_end_row,
+            )
+            # カテゴリ範囲（A列の日付、ヘッダー行を除く）
+            categories = Reference(
+                ws_chart,
+                min_col=1,
+                min_row=data_start_row + 1,
+                max_row=data_end_row,
+            )
+
+            # カラム名（Type名）を件名として表示
+            chart.add_data(data_range, titles_from_data=True)
+            chart.set_categories(categories)
+
+            # グラフをA1に配置
+            ws_chart.add_chart(chart, "A1")
+
+    if return_wb:
+        return wb
+    wb.save(filename)
+    return filename
+
+
 def main():
     """メイン関数"""
     # ページ設定
@@ -126,7 +217,7 @@ def main():
         start_date = f"{year}-{month.zfill(2)}-01"
         end_date = f"{year}-{month.zfill(2)}-{last_day}"
 
-        with sqlite3.connect("db_folder/qc_data_base.db", timeout=30) as conn:
+        with duckdb.connect("db_folder/qc_data_base.db") as conn:
             query = """
                 SELECT
                   f.File_Name,
@@ -204,8 +295,8 @@ def main():
                     .reset_index()
                 )
                 # 変動係数（CV）を計算し、標準偏差の次の列に挿入
-                stat_df["変動係数(%)"
-                        ] = stat_df["std"] / stat_df["mean"].abs() * 100
+                stat_df["変動係数(%)"] = stat_df[
+                    "std"] / stat_df["mean"].abs() * 100
                 # 列の順序を調整
                 cols = stat_df.columns.tolist()
                 if "std" in cols and "変動係数(%)" in cols:
@@ -262,8 +353,9 @@ def main():
                     "工程能力指数",
                 ]
                 # 存在する列のみ表示
-                col_order = [col for col in col_order if
-                             col in stat_df.columns]
+                col_order = [col for col in
+                             col_order if col in
+                             stat_df.columns]
                 stat_df = stat_df[col_order]
                 # 列名を日本語に
                 stat_df = stat_df.rename(columns={"Measurement_Item": "項目名"})
@@ -275,7 +367,7 @@ def main():
             st.info("SD換算データがありません。")
 
         # QCチェックログの期間に該当するレコードを別テーブルで表示
-        with sqlite3.connect("db_folder/qc_data_base.db", timeout=30) as conn:
+        with duckdb.connect("db_folder/qc_data_base.db") as conn:
             check_log_query = (
                 "SELECT "
                 "  check_date AS '確認日', "
@@ -321,37 +413,22 @@ def main():
                     "原因",
                     "CAPA",
                 ]
-                display_cols = [col for col in display_cols if
-                                col in group.columns]
+                display_cols = [col for col in
+                                display_cols if col in
+                                group.columns]
                 st.dataframe(group[display_cols], use_container_width=True)
         else:
             st.info("該当期間のデータがありません。")
 
-    '''     # グラフ・リストをエクセル出力ボタンがクリックされた場合の処理
-        if export_data_button and year and month:
-            try:
-                # メモリ上にエクセルファイルを保存
-                output = io.BytesIO()
-                wb = create_excel_report(df, year, month, return_wb=True)
-                wb.save(output)
-                output.seek(0)
-                st.success("グラフ・リストのエクセルファイルが作成されました。")
-                st.download_button(
-                    label="グラフ・リストをエクセルダウンロード",
-                    data=output,
-                    file_name=f"統計学的精度管理_{year}年{month.zfill(2)}月.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                )
-            except Exception as e:
-                st.error(f"エクセルファイルの作成中にエラーが発生しました: {str(e)}")
- '''
+    # グラフ・リストをエクセル出力ボタンがクリックされた場合の処理
+    # （コメントアウト：既存の内部精度管理台帳出力機能を使用）
     # エクセル出力ボタンがクリックされた場合の処理
     if export_excel_button and year and month:
         _, last_day = calendar.monthrange(int(year), int(month))
         start_date = f"{year}-{month.zfill(2)}-01"
         end_date = f"{year}-{month.zfill(2)}-{last_day}"
 
-        with sqlite3.connect("db_folder/qc_data_base.db", timeout=30) as conn:
+        with duckdb.connect("db_folder/qc_data_base.db") as conn:
             query = """
                 SELECT
                   f.File_Name,
@@ -409,7 +486,10 @@ def main():
                 label="エクセルファイルをダウンロード",
                 data=output,
                 file_name=f"内部精度管理台帳_{year}年{month.zfill(2)}月.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                mime=(
+                    "application/vnd.openxmlformats-"
+                    "officedocument.spreadsheetml.sheet"
+                ),
             )
         except Exception as e:
             st.error(f"エクセルファイルの作成中にエラーが発生しました: {str(e)}")
