@@ -44,7 +44,7 @@ graph TD
 | pages/pg02_test_status.py | 測定状況登録 | src/database, src/config |
 | pages/pg03_qc_act_log.py | 精度管理試料測定結果対応 | src/database, src/utils |
 | pages/pg04_confirmation_of_accuracy_control.py | 精度管理実施状況確認 | src/database, src/utils |
-| pages/pg05_statical.py | 精度管理図出力 | src/database, src/utils |
+| pages/pg05_statical.py | 統計学的精度管理確認・台帳作成 | src/database, duckdb, pandas, plotly, openpyxl |
 | pages/pg99_master_table.py | マスターテーブル管理 | src/database, src/config |
 | src/config.py | 設定・ロギング管理 | logging |
 | src/database/connection.py | DB接続管理・テーブル定義 | src/config |
@@ -133,6 +133,25 @@ graph TD
 
 ---
 
+### pages/pg05_statical.py
+
+- **関数**
+  - `main()` : メイン処理（Streamlit自動実行）
+  - `create_excel_report(df, year, month, return_wb=False)` : 年月指定でエクセルファイルを作成
+    - データシートとグラフシートを含む内部精度管理台帳を生成
+    - SD換算推移の折れ線グラフをTypeごとに作成
+  - `create_excel_report_by_date_range(df, start_date_str, end_date_str, return_wb=False)` : 期間指定でエクセルファイルを作成
+  - `display_type_data(conn)` : Type毎のデータを表示（未使用）
+- **主要機能**
+  - 年月指定によるデータ取得・表示
+  - SD換算値のグラフ表示（Plotly使用、Typeごとに色分け）
+  - 基本統計量の計算・表示（平均、標準偏差、変動係数、最小値、最大値、中央値、工程能力指数）
+  - QCチェックログの表示（Typeごとにグループ化）
+  - データ一覧の表示（項目名・Typeごとにグループ化）
+  - 内部精度管理台帳のExcel出力（OpenPyXL使用）
+
+---
+
 ## 4. 主要なデータ構造・変数の関係
 
 - **ProcessedData**
@@ -154,7 +173,7 @@ flowchart TD
     C --> D[ProcessedData]
     D --> E[westgard_rules.py]
     E --> F[connection.py]
-    F --> G[qc_data_base.db]
+    F --> G[qc_data_base.db<br/>DuckDB]
     H[pg01_qc_check.py] --> I[データ表示・確認]
     I --> J[pg02_test_status.py]
     J --> K[pg03_qc_act_log.py]
@@ -168,9 +187,11 @@ flowchart TD
 
 ## 6. 依存関係・技術スタック
 
-- **主なライブラリ**: streamlit, pandas, numpy, sqlite3, logging
-- **DB**: SQLite
+- **主なライブラリ**: streamlit, pandas, numpy, duckdb, plotly, openpyxl, logging
+- **DB**: DuckDB（SQLiteから移行）
 - **データ管理**: Excel, DataFrame
+- **グラフ描画**: Plotly Express
+- **Excel操作**: OpenPyXL
 - **ロギング**: RotatingFileHandler
 
 ---
