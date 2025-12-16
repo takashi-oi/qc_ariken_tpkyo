@@ -41,7 +41,7 @@ source venv/bin/activate
 python --version
 
 # Streamlitアプリケーションを起動
-streamlit run qc_ariken_tokyo.py
+streamlit run Arch.py
 ```
 
 ## アクセス方法
@@ -72,7 +72,7 @@ pip install -r requirements.txt --force-reinstall
 
 ### ポートが使用中の場合
 ```bash
-streamlit run qc_ariken_tokyo.py --server.port 8502
+streamlit run Arch.py --server.port 8502
 ```
 
 ### Python 3.12.7が見つからない場合

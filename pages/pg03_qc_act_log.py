@@ -5,9 +5,6 @@
 # ロギング機能を提供するライブラリをインポート
 import logging
 
-# DuckDBデータベースを操作するためのライブラリをインポート
-import duckdb
-
 # データクラスを定義するためのライブラリをインポート
 from dataclasses import dataclass
 
@@ -16,6 +13,9 @@ from pathlib import Path
 
 # 型ヒントを使用するためのライブラリをインポート
 from typing import Any, Dict, List, Literal, Optional, Tuple
+
+# DuckDBデータベースを操作するためのライブラリをインポート
+import duckdb
 
 # データ分析と操作を行うためのライブラリをインポート
 import pandas as pd
@@ -90,7 +90,7 @@ class DatabaseInitializer:
     def create_tables(conn: duckdb.DuckDBPyConnection) -> bool:
         """必要なテーブルを作成、成功時True、失敗時Falseを返す"""
         try:
-            conn.executescript(
+            conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS table_qc_multi_rule (
                     Date_Time TEXT,
@@ -100,8 +100,11 @@ class DatabaseInitializer:
                     QC_RESULTS TEXT,
                     Violated_rule TEXT,
                     PRIMARY KEY (Date_Time, Batch, Item_Code, type)
-                );
-
+                )
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS table_qc_status_log (
                     Date_Time TEXT,
                     Measurer TEXT,
@@ -113,8 +116,8 @@ class DatabaseInitializer:
                     measuring_instrument_usage TEXT,
                     Type TEXT,
                     File_Name TEXT
-                );
-            """
+                )
+                """
             )
             conn.commit()
             logger.info("テーブル作成成功")
@@ -134,15 +137,41 @@ class QCDataAccess:
     def _create_indices(self) -> None:
         """パフォーマンス向上のためのインデックスを作成"""
         try:
-            self.conn.executescript(
+            self.conn.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_mulch_rule_date_time ON
-                                 table_qc_multi_rule (Date_Time);
+                                 table_qc_multi_rule (Date_Time)
+                """
+            )
+            self.conn.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_mulch_rule_item_code ON
-                                 table_qc_multi_rule (Item_Code);
+                                 table_qc_multi_rule (Item_Code)
+                """
+            )
+            self.conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_mulch_rule_file_name ON
+                                 table_qc_multi_rule (File_Name)
+                """
+            )
+            self.conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_status_log_file_name ON
+                                 table_qc_status_log (File_Name)
+                """
+            )
+            self.conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_status_log_date_time ON
+                                 table_qc_status_log (Date_Time)
+                """
+            )
+            self.conn.execute(
+                """
                 CREATE INDEX IF NOT EXISTS idx_act_log_date_time ON
-                                 table_qc_act_log (Date_Time);
-            """
+                                 table_qc_act_log (Date_Time)
+                """
             )
             self.conn.commit()
             logger.info("インデックス作成成功")
@@ -231,8 +260,7 @@ class QCDataAccess:
             logger.error("データ登録エラー: %s", e)
             return False
 
-    def get_violated_rules(self,
-                           item_code: Optional[str] = None
+    def get_violated_rules(self, item_code: Optional[str] = None
                            ) -> pd.DataFrame:
         """違反ルールの取得"""
         try:
@@ -255,7 +283,8 @@ class QCDataAccess:
         """指定されたファイル名のtable_qc_file_infoレコードを取得"""
         try:
             query = """
-                SELECT * FROM table_qc_file_info
+                SELECT Date_Time, Batch, Item_Code, Model, Measurer
+                FROM table_qc_file_info
                 WHERE File_Name = ?
                 ORDER BY Date_Time DESC
             """
@@ -263,6 +292,44 @@ class QCDataAccess:
         except duckdb.Error as e:
             logger.error("ファイル情報取得エラー: %s", e)
             return pd.DataFrame()
+
+    def get_file_data_batch(
+        self, file_name: str
+    ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """ファイル名に基づいて3つのテーブルからデータを一括取得"""
+        try:
+            # table_qc_status_logからデータ抽出
+            query_status = """
+                SELECT Date_Time, Item_Code, Batch, standard_usage,
+                       control_usage, reagents_usage,
+                       measuring_instrument_usage
+                FROM table_qc_status_log
+                WHERE File_Name = ?
+                ORDER BY Date_Time DESC
+            """
+            status_log_df = pd.read_sql_query(
+                query_status, self.conn, params=(file_name,)
+            )
+
+            # table_qc_file_infoからデータ抽出
+            file_info_df = self.get_file_info_records(file_name)
+
+            # QCマルチルール情報の取得
+            query_multi_rule = """
+                SELECT Judgment, Error_type, Type_error, Violated_rule,
+                       Type, Dye, Ct, SD_Conversion, Lot_Number
+                FROM table_qc_multi_rule
+                WHERE File_Name = ?
+                ORDER BY Date_Time DESC
+            """
+            multi_rule_df = pd.read_sql_query(
+                query_multi_rule, self.conn, params=(file_name,)
+            )
+
+            return status_log_df, file_info_df, multi_rule_df
+        except duckdb.Error as e:
+            logger.error("バッチデータ取得エラー: %s", e)
+            return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
     def get_recent_records(self, limit: int = 5) -> pd.DataFrame:
         """最近の記録を取得"""
@@ -417,24 +484,38 @@ def main():
         st.sidebar.error("従業員マスターの読み込みに失敗しました。")
 
     # サイドバーに直近で読み込んだファイル名5件をセレクトボックスで表示
-    file_name_options = []
+    @st.cache_data(ttl=300)  # 5分間キャッシュ
+    def get_file_name_options(_conn: duckdb.DuckDBPyConnection) -> List[str]:
+        """ファイル名リストを取得（キャッシュ付き）"""
+        try:
+            query = (
+                "SELECT DISTINCT File_Name "
+                "FROM table_qc_file_info "
+                "ORDER BY Date_Time DESC "
+                "LIMIT 5"
+            )
+            file_name_df = pd.read_sql_query(query, _conn)
+            return file_name_df["File_Name"].tolist() if not file_name_df.empty else []
+        except (
+            duckdb.Error,
+            pd.errors.DatabaseError,
+            FileNotFoundError,
+        ) as e:
+            logger.error("ファイル名の取得エラー: %s", e)
+            return []
+
+    # データベース接続を先に取得
     try:
-        conn = duckdb.connect(Config.db_path)
-        query = (
-            "SELECT DISTINCT File_Name "
-            "FROM table_qc_file_info "
-            "ORDER BY Date_Time DESC "
-            "LIMIT 5"
-        )
-        file_name_df = pd.read_sql_query(query, conn)
-        file_name_options = (
-            file_name_df["File_Name"].tolist()
-            if not file_name_df.empty
-            else []
-        )
-        conn.close()
-    except (duckdb.Error, pd.errors.DatabaseError, FileNotFoundError) as e:
-        st.sidebar.warning(f"ファイル名の取得に失敗しました: {e}")
+        db_manager = DatabaseManager(Config.db_path)
+        conn = db_manager.get_connection()
+    except (duckdb.Error, FileNotFoundError) as e:
+        st.error(f"データベース接続エラー: {e}")
+        logger.error("データベース接続エラー: %s", e)
+        return
+
+    file_name_options = get_file_name_options(conn)
+    if not file_name_options:
+        st.sidebar.warning("ファイル名の取得に失敗しました。")
 
     def file_name_format(x):
         return x if x in file_name_options else "Unknown"
@@ -463,10 +544,8 @@ def main():
     # アプリケーション設定
     st.markdown(f"### {Config.page_title}")
 
-    # データベース初期化
+    # データベース初期化（接続は既に取得済み）
     try:
-        db_manager = DatabaseManager(Config.db_path)
-        conn = db_manager.get_connection()
         initializer = DatabaseInitializer()
         if not initializer.create_tables(conn):
             st.error("データベースの初期化に失敗しました。ログを確認してください。")
@@ -474,8 +553,8 @@ def main():
 
         data_access = QCDataAccess(conn)
     except (duckdb.Error, FileNotFoundError) as e:
-        st.error(f"データベース接続エラー: {e}")
-        logger.error("データベース接続エラー: %s", e)
+        st.error(f"データベースの初期化エラー: {e}")
+        logger.error("データベースの初期化エラー: %s", e)
         return
 
     # マスターデータ読み込み
@@ -498,48 +577,25 @@ def main():
         selected_file_name = st.session_state.get("sidebar_file_name", None)
         if selected_file_name:
             try:
-                # table_qc_status_logからデータ抽出
-                conn = duckdb.connect(Config.db_path)
-                query = (
-                    "SELECT * FROM table_qc_status_log "
-                    "WHERE File_Name = ? "
-                    "ORDER BY Date_Time DESC"
-                )
-                status_log_df = pd.read_sql_query(
-                    query, conn, params=(selected_file_name,)
-                )
-
-                # table_qc_file_infoからデータ抽出
-                file_info_df = data_access.get_file_info_records(
-                    selected_file_name)
-
-                # QCマルチルール情報の表示
-                query_multi_rule = (
-                    "SELECT * FROM table_qc_multi_rule "
-                    "WHERE File_Name = ? "
-                    "ORDER BY Date_Time DESC"
-                )
-                multi_rule_df = pd.read_sql_query(
-                    query_multi_rule, conn, params=(selected_file_name,)
-                )
-                conn.close()
+                # バッチでデータを一括取得（パフォーマンス向上）
+                (
+                    status_log_df,
+                    file_info_df,
+                    multi_rule_df,
+                ) = data_access.get_file_data_batch(selected_file_name)
 
                 # --- 測定情報 ---
                 if not file_info_df.empty:
                     st.subheader("測定情報")
                     display_file_info = file_info_df.copy()
-                    if len(display_file_info.columns) >= 6:
-                        display_file_info = display_file_info.iloc[:, 1:6]
-                        display_file_info.columns = [
-                            "日時",
-                            "バッチ",
-                            "項目コード",
-                            "モデル",
-                            "測定者",
-                        ]
-                    else:
-                        st.write("実際の列名:", list(display_file_info.columns))
-                    st.dataframe(display_file_info)
+                    display_file_info.columns = [
+                        "日時",
+                        "バッチ",
+                        "項目コード",
+                        "モデル",
+                        "測定者",
+                    ]
+                    st.dataframe(display_file_info, hide_index=True)
                 else:
                     st.info("該当ファイルのファイル情報はありません。")
 
@@ -556,10 +612,9 @@ def main():
                         "measuring_instrument_usage",
                     ]
                     available_cols = [
-                        col for col in columns_to_show if
-                        col in status_log_df.columns
+                        col for col in columns_to_show if col in status_log_df.columns
                     ]
-                    display_status_log = status_log_df[available_cols].copy()
+                    display_status_log = status_log_df[available_cols]
                     display_status_log.columns = [
                         "日時",
                         "項目コード",
@@ -602,8 +657,7 @@ def main():
                     for col in columns_to_show:
                         if col in filtered_multi_rule_df.columns:
                             available_cols.append(col)
-                    display_multi_rule = filtered_multi_rule_df[available_cols
-                                                                ].copy()
+                    display_multi_rule = filtered_multi_rule_df[available_cols]
                     jp_columns = [
                         "判定",
                         "誤差タイプ",
@@ -632,8 +686,7 @@ def main():
                 # QCマルチルール情報からTypeの値を取得
                 type_options = ["違反したマルチルールを選択してください"]
                 if "Type" in multi_rule_df.columns:
-                    unique_types = multi_rule_df["Type"
-                                                 ].dropna().unique().tolist()
+                    unique_types = multi_rule_df["Type"].dropna().unique().tolist()
                     type_options.extend(unique_types)
 
                 qc_type = st.selectbox("タイプ", type_options)
@@ -661,9 +714,11 @@ def main():
                     else:
                         st.error("同じ条件のCAPAが既に登録されています。")
 
-            except (duckdb.Error,
-                    pd.errors.DatabaseError,
-                    FileNotFoundError) as e:
+            except (
+                duckdb.Error,
+                pd.errors.DatabaseError,
+                FileNotFoundError,
+            ) as e:
                 err_msg = f"データの取得に失敗しました: {e}"
                 st.error(err_msg)
 

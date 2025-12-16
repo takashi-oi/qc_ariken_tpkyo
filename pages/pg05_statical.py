@@ -49,9 +49,7 @@ def create_excel_report(df, year, month, return_wb=False):
         pivot = pivot.reset_index()
         # グラフデータをエクセルに書き込み（A1から開始）
         start_row = 1
-        for r in dataframe_to_rows(pivot,
-                                   index=False,
-                                   header=True):
+        for r in dataframe_to_rows(pivot, index=False, header=True):
             ws_chart.append(r)
 
         # 折れ線グラフを作成（画面表示と同じスタイル）
@@ -295,8 +293,8 @@ def main():
                     .reset_index()
                 )
                 # 変動係数（CV）を計算し、標準偏差の次の列に挿入
-                stat_df["変動係数(%)"] = stat_df[
-                    "std"] / stat_df["mean"].abs() * 100
+                stat_df["変動係数(%)"
+                        ] = stat_df["std"] / stat_df["mean"].abs() * 100
                 # 列の順序を調整
                 cols = stat_df.columns.tolist()
                 if "std" in cols and "変動係数(%)" in cols:

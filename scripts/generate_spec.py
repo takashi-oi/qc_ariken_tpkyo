@@ -52,7 +52,7 @@ def create_spec_pdf():
     c.setFont(JP_FONT_NAME, 14)
     c.drawString(25*mm, 205*mm, "2.1 メインファイル")
     c.setFont(JP_FONT_NAME, 12)
-    text = """- qc_ariken_tokyo.py\n  - システムのメインページ\n  - ページ設定とナビゲーションメニューの提供\n  - SQLiteデータベース接続の初期化"""
+    text = """- Arch.py\n  - システムのメインページ\n  - ページ設定とナビゲーションメニューの提供\n  - SQLiteデータベース接続の初期化"""
     y = 195*mm
     for line in text.split('\n'):
         c.drawString(25*mm, y, line)

@@ -37,4 +37,4 @@ echo ""
 echo "アプリケーションを停止するには Ctrl+C を押してください"
 echo ""
 
-streamlit run qc_ariken_tokyo.py 
+streamlit run Arch.py 

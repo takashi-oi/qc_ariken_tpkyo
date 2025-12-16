@@ -8,7 +8,7 @@
 ```mermaid
 graph TB
     %% メインアプリケーション
-    A[qc_ariken_tokyo.py<br/>メインアプリケーション<br/>Streamlitアプリ] --> B[pages/]
+    A[Arch.py<br/>メインアプリケーション<br/>Streamlitアプリ] --> B[pages/]
     A --> C[src/]
     A --> D[db_folder/]
     A --> E[master_folder/]
@@ -125,7 +125,7 @@ flowchart TD
 ```mermaid
 graph LR
     %% コアモジュール
-    A[qc_ariken_tokyo.py] --> B[src/config.py]
+    A[Arch.py] --> B[src/config.py]
     A --> C[pages/]
     
     %% ページモジュールの依存関係
@@ -158,10 +158,10 @@ graph LR
 ## ファイル構造詳細
 
 ### ルートディレクトリ
-- `qc_ariken_tokyo.py` - メインアプリケーション（Streamlit）
+- `Arch.py` - メインアプリケーション（Streamlit）
 - `requirements.txt` - Python依存関係
 - `generate_spec.py` - 仕様書生成スクリプト
-- `qc_ariken_tokyo.code-workspace` - VS Codeワークスペース設定
+- `Arch.code-workspace` - VS Codeワークスペース設定
 
 ### ページモジュール（pages/）
 | ファイル | 機能 | 主要な依存関係 |

@@ -94,13 +94,13 @@ source .venv/bin/activate
 python --version
 
 # Streamlitアプリケーションを起動
-streamlit run qc_ariken_tokyo.py
+streamlit run Arch.py
 ```
 
 ### 方法3: UV runを使用（アクティベート不要）
 
 ```bash
-uv run streamlit run qc_ariken_tokyo.py
+uv run streamlit run Arch.py
 ```
 
 ## アクセス方法
@@ -150,7 +150,7 @@ uv pip install -r requirements.txt --force-reinstall
 
 ### ポートが使用中の場合
 ```bash
-streamlit run qc_ariken_tokyo.py --server.port 8502
+streamlit run Arch.py --server.port 8502
 ```
 
 ### Python 3.13が見つからない場合

@@ -125,3 +125,8 @@ if __name__ == "__main__":
         print(f"エラー: {e}")
         sys.exit(1)
 
+
+
+
+
+

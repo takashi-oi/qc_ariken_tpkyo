@@ -4,7 +4,7 @@
 
 ```mermaid
 graph TD
-    A[qc_ariken_tokyo.py<br/>メインアプリ] --> B[pages/]
+    A[Arch.py<br/>メインアプリ] --> B[pages/]
     A --> C[src/]
     A --> D[db_folder/]
     A --> E[master_folder/]
@@ -39,7 +39,7 @@ graph TD
 
 | ファイル/ディレクトリ | 役割 | 主な依存先 |
 |----------------------|------|------------|
-| qc_ariken_tokyo.py | Streamlitメインアプリ | src/, pages/ |
+| Arch.py | Streamlitメインアプリ | src/, pages/ |
 | pages/pg01_qc_check.py | 管理試料測定結果登録・確認 | src/database, src/models, src/utils, src/data_import |
 | pages/pg02_test_status.py | 測定状況登録 | src/database, src/config |
 | pages/pg03_qc_act_log.py | 精度管理試料測定結果対応 | src/database, src/utils |
