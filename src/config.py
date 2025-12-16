@@ -6,14 +6,20 @@ from logging.handlers import RotatingFileHandler
 
 class Config:
     """設定とロギングを管理するクラス"""
+
     # データベース設定
-    DATABASE_PATH = 'db_folder/qc_data_base.db'
-    MASTER_FOLDER = 'master_folder'
+    # QCデータ用（DuckDB）
+    QC_DATABASE_PATH = "db_folder/qc_data_base.db"
+    # マスタデータ用（SQLite3）
+    MASTER_DATABASE_PATH = "db_folder/master_data.db"
+    # 後方互換性のため（QCデータ用）
+    DATABASE_PATH = QC_DATABASE_PATH
+    MASTER_FOLDER = "master_folder"
     MAX_RECORDS_PER_TYPE = 10
 
     # ロギング設定
     LOG_LEVEL = logging.INFO
-    LOG_FILE = 'qc_check.log'
+    LOG_FILE = "qc_check.log"
     LOG_MAX_BYTES = 10 * 1024 * 1024  # 10MB
     LOG_BACKUP_COUNT = 5
 
@@ -27,7 +33,7 @@ class Config:
         console_handler = logging.StreamHandler()
         console_handler.setLevel(cls.LOG_LEVEL)
         console_formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
         console_handler.setFormatter(console_formatter)
 
@@ -39,7 +45,7 @@ class Config:
         )
         file_handler.setLevel(logging.DEBUG)
         file_formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
         file_handler.setFormatter(file_formatter)
 

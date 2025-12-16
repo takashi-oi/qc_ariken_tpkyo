@@ -195,8 +195,10 @@ with st.sidebar:  # サイドバーにウィジェットを配置
 
     # 実施者名の入力と保存
     try:  # 実施者名の入力と保存を試みる
-        # 検査要員データをExcelファイルから読み込む
-        employee_data = pd.read_excel("data/master/employee_code.xlsx")
+        # 検査要員データをデータベースから読み込む
+        from src.utils.master_loader import MasterDataLoader
+
+        employee_data = MasterDataLoader.load_employee_data()
         measurer_list = [""] + employee_data["Member's_Name"].tolist()
         selected_measurer = st.selectbox(  # ドロップダウンリスト
             "測定者名", measurer_list, index=0
@@ -204,9 +206,7 @@ with st.sidebar:  # サイドバーにウィジェットを配置
         # 選択された測定者をセッション状態に保存
         st.session_state["implementor"] = selected_measurer
     except FileNotFoundError:  # ファイルが見つからない場合
-        st.error(
-            "data/master/employee_code.xlsxファイルが" "見つかりません"
-        )
+        st.error("data/master/employee_code.xlsxファイルが" "見つかりません")
         st.stop()  # プログラムを停止
     except (
         pd.errors.EmptyDataError,  # データの読み込みに失敗した場合

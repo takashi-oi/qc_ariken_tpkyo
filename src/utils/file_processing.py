@@ -1,17 +1,19 @@
 """表示機能が向上したQCデータ処理モジュール"""
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 
 import pandas as pd
 import streamlit as st
 from pandas import DataFrame
+
 from src.config import global_logger as logger
 
 
 @dataclass
 class ProcessedData:
     """処理されたQCデータ結果のコンテナ"""
+
     file_info: pd.DataFrame
     ic_data: pd.DataFrame
     nc_data: pd.DataFrame
@@ -25,10 +27,7 @@ class ProcessedData:
             raise ValueError("ic_dataはDataFrameである必要があります")
         if not isinstance(self.nc_data, pd.DataFrame):
             raise ValueError("nc_dataはDataFrameである必要があります")
-        if self.pc_data is not None and not isinstance(
-            self.pc_data,
-            pd.DataFrame
-        ):
+        if self.pc_data is not None and not isinstance(self.pc_data, pd.DataFrame):
             raise ValueError("pc_dataが指定される場合はDataFrameである必要があります")
 
     def is_valid(self) -> bool:
@@ -39,16 +38,12 @@ class ProcessedData:
 
             required_dfs = [self.ic_data, self.nc_data]
             if not all(
-                isinstance(df, pd.DataFrame) and not df.empty
-                for df in required_dfs
+                isinstance(df, pd.DataFrame) and not df.empty for df in required_dfs
             ):
                 return False
 
             if self.pc_data is not None and (
-                not isinstance(
-                    self.pc_data,
-                    pd.DataFrame
-                ) or self.pc_data.empty
+                not isinstance(self.pc_data, pd.DataFrame) or self.pc_data.empty
             ):
                 return False
 
@@ -60,13 +55,10 @@ class ProcessedData:
     def get_all_dataframes(self) -> Dict[str, pd.DataFrame]:
         """全てのデータフレームを辞書形式で取得"""
         return {
-            'file_info': self.file_info,
-            'ic_data': self.ic_data if self.ic_data is not None
-            else pd.DataFrame(),
-            'nc_data': self.nc_data if self.nc_data is not None
-            else pd.DataFrame(),
-            'pc_data': self.pc_data if self.pc_data is not None
-            else pd.DataFrame()
+            "file_info": self.file_info,
+            "ic_data": self.ic_data if self.ic_data is not None else pd.DataFrame(),
+            "nc_data": self.nc_data if self.nc_data is not None else pd.DataFrame(),
+            "pc_data": self.pc_data if self.pc_data is not None else pd.DataFrame(),
         }
 
 
@@ -83,31 +75,26 @@ class QCDataApp:
             st.title("Quality Check Data Analysis  Results")
 
             with st.sidebar:
-                employee_data = pd.read_excel(
-                    "data/master/employee_code.xlsx")
+                from src.utils.master_loader import MasterDataLoader
+
+                employee_data = MasterDataLoader.load_employee_data()
                 measurer_list = [""] + employee_data["Member's_Name"].tolist()
-                measurer = st.selectbox(
-                    "測定者名",
-                    measurer_list,
-                    index=0
-                )
+                measurer = st.selectbox("測定者名", measurer_list, index=0)
                 uploaded_file = st.file_uploader(
                     "測定結果Excelファイルをアップロードして下さい",
-                    type=['xlsx', 'xls']
+                    type=["xlsx", "xls"],
                 )
 
             if uploaded_file and measurer:
                 processed_data = await self.processor.process_and_display(
-                    uploaded_file,
-                    measurer
+                    uploaded_file, measurer
                 )
                 return processed_data
             return None
 
         except Exception as e:
             st.error(f"Application error: {str(e)}")
-            raise RuntimeError(
-                f"Quality Check Data processing failed: {str(e)}") from e
+            raise RuntimeError(f"Quality Check Data processing failed: {str(e)}") from e
 
 
 class QCDataDisplay:
@@ -128,10 +115,9 @@ class QCDataProcessor:
     def __init__(self):
         self.display = QCDataDisplay()
 
-    async def process_and_display(self,
-                                  file: Any,
-                                  measurer: str
-                                  ) -> Optional[ProcessedData]:
+    async def process_and_display(
+        self, file: Any, measurer: str
+    ) -> Optional[ProcessedData]:
         """QCデータを処理して結果を表示"""
         try:
             if not file or not measurer:
@@ -155,42 +141,44 @@ class QCDataProcessor:
     def _get_file_info(self, file: Any, measurer: str) -> DataFrame:
         """ファイル情報を取得"""
         try:
-            base_name = file.name.rsplit('.', 1)[0]
-            name_parts = base_name.split('-')
+            base_name = file.name.rsplit(".", 1)[0]
+            name_parts = base_name.split("-")
             if len(name_parts) < 2:
                 raise ValueError("Invalid file name format: missing date")
 
-            code_batch = name_parts[0].split('_')
+            code_batch = name_parts[0].split("_")
             if len(code_batch) < 2:
-                raise ValueError(
-                    "Invalid file name format: missing code or batch"
-                    )
+                raise ValueError("Invalid file name format: missing code or batch")
 
-            return pd.DataFrame({
-                'File_Name': [file.name],
-                'Measurer': [measurer],
-                'Item_Code': [code_batch[0][0]],
-                'Batch': [code_batch[0][1]],
-                'Model': [file.name.split('_')[1].split('-')[0]],
-                'Date_Time': [pd.to_datetime(
-                    name_parts[1]).strftime('%Y/%m/%d %H:%M:%S')]
-            })
+            return pd.DataFrame(
+                {
+                    "File_Name": [file.name],
+                    "Measurer": [measurer],
+                    "Item_Code": [code_batch[0][0]],
+                    "Batch": [code_batch[0][1]],
+                    "Model": [file.name.split("_")[1].split("-")[0]],
+                    "Date_Time": [
+                        pd.to_datetime(name_parts[1]).strftime("%Y/%m/%d %H:%M:%S")
+                    ],
+                }
+            )
         except (IndexError, ValueError) as e:
             raise ValueError(f"Invalid file name format: {file.name}") from e
 
-    def _process_data(self,
-                      uploaded_df: DataFrame,
-                      file_info: DataFrame) -> ProcessedData:
+    def _process_data(
+        self, uploaded_df: DataFrame, file_info: DataFrame
+    ) -> ProcessedData:
         """アップロードされたデータを処理"""
         try:
-            qc_control_df = pd.read_excel('data/master/qc_control.xlsx')
+            from src.utils.master_loader import MasterDataLoader
+
+            qc_control_df = MasterDataLoader.load_qc_control()
             processed_df = pd.merge(
                 uploaded_df,
                 qc_control_df[
-                    qc_control_df['Item_Code'] ==
-                    file_info['Item_Code'].iloc[0]
+                    qc_control_df["Item_Code"] == file_info["Item_Code"].iloc[0]
                 ],
-                how='left'
+                how="left",
             )
 
             # file_infoの情報を各行に追加
@@ -198,50 +186,81 @@ class QCDataProcessor:
                 processed_df[col] = file_info[col].iloc[0]
 
             # IC データの処理
-            ic_df = processed_df[processed_df['Type'] == 'IC'].copy()
-            ic_df['Verdict'] = ic_df['Ct'].apply(
-                lambda x: 'Pass' if x > 10 else 'Fail'
-            )
+            ic_df = processed_df[processed_df["Type"] == "IC"].copy()
+            ic_df["Verdict"] = ic_df["Ct"].apply(lambda x: "Pass" if x > 10 else "Fail")
             # 不要な列を削除
-            ic_df = ic_df[[
-                'Verdict', 'Item_Code', 'Date_Time', 'Batch', 'Model',
-                'Measurer', 'Dye', 'Type', 'Lot_Number', 'Sample Type',
-                'Ct', 'CL', 'SD'
-            ]]
+            ic_df = ic_df[
+                [
+                    "Verdict",
+                    "Item_Code",
+                    "Date_Time",
+                    "Batch",
+                    "Model",
+                    "Measurer",
+                    "Dye",
+                    "Type",
+                    "Lot_Number",
+                    "Sample Type",
+                    "Ct",
+                    "CL",
+                    "SD",
+                ]
+            ]
 
             # NC データの処理
             nc_df = processed_df[
-                (processed_df['Sample Type'] == 'Negative') &
-                (processed_df['Type'] != 'IC')
+                (processed_df["Sample Type"] == "Negative")
+                & (processed_df["Type"] != "IC")
             ].copy()
-            nc_df['Verdict'] = nc_df['Ct'].apply(
-                lambda x: 'Pass' if pd.isna(x) or x == '-' else 'Fail'
+            nc_df["Verdict"] = nc_df["Ct"].apply(
+                lambda x: "Pass" if pd.isna(x) or x == "-" else "Fail"
             )
             # 不要な列を削除
-            nc_df = nc_df[[
-                'Verdict', 'Item_Code', 'Date_Time', 'Batch', 'Model',
-                'Measurer', 'Dye', 'Type', 'Lot_Number', 'Sample Type',
-                'Ct', 'CL', 'SD'
-            ]]
+            nc_df = nc_df[
+                [
+                    "Verdict",
+                    "Item_Code",
+                    "Date_Time",
+                    "Batch",
+                    "Model",
+                    "Measurer",
+                    "Dye",
+                    "Type",
+                    "Lot_Number",
+                    "Sample Type",
+                    "Ct",
+                    "CL",
+                    "SD",
+                ]
+            ]
 
             # PC データの処理
             pc_df = processed_df[
-                (processed_df['Sample Type'] == 'Positive') &
-                (processed_df['Type'] != 'IC')
+                (processed_df["Sample Type"] == "Positive")
+                & (processed_df["Type"] != "IC")
             ].copy()
-            pc_df['SD_Conversion'] = (pc_df['Ct'] - pc_df['CL']) / pc_df['SD']
+            pc_df["SD_Conversion"] = (pc_df["Ct"] - pc_df["CL"]) / pc_df["SD"]
             # 不要な列を削除
-            pc_df = pc_df[[
-                'SD_Conversion', 'Item_Code', 'Date_Time', 'Batch', 'Model',
-                'Measurer', 'Dye', 'Type', 'Lot_Number', 'Sample Type',
-                'Ct', 'CL', 'SD'
-            ]]
+            pc_df = pc_df[
+                [
+                    "SD_Conversion",
+                    "Item_Code",
+                    "Date_Time",
+                    "Batch",
+                    "Model",
+                    "Measurer",
+                    "Dye",
+                    "Type",
+                    "Lot_Number",
+                    "Sample Type",
+                    "Ct",
+                    "CL",
+                    "SD",
+                ]
+            ]
 
             return ProcessedData(
-                file_info=file_info,
-                ic_data=ic_df,
-                nc_data=nc_df,
-                pc_data=pc_df
+                file_info=file_info, ic_data=ic_df, nc_data=nc_df, pc_data=pc_df
             )
 
         except Exception as e:

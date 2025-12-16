@@ -23,6 +23,9 @@ import pandas as pd
 # Webアプリケーションを作成するためのライブラリをインポート
 import streamlit as st
 
+# マスターデータ読み込みユーティリティをインポート
+from src.utils.master_loader import MasterDataLoader
+
 # ロギング設定
 logging.basicConfig(
     level=logging.INFO,
@@ -384,69 +387,6 @@ class QCDataAccess:
             return False
 
 
-class MasterDataLoader:
-    """マスターデータ読み込み（キャッシュ対応）"""
-
-    _measurement_items_cache = None
-    _employee_data_cache = None
-
-    @classmethod
-    def load_measurement_items(
-        cls, force_reload: bool = False
-    ) -> Tuple[pd.DataFrame, Dict[str, str]]:
-        """検査項目マスターの読み込み"""
-        if cls._measurement_items_cache is not None and not force_reload:
-            return cls._measurement_items_cache
-
-        try:
-            file_path = Path(Config.measurement_master)
-            if not file_path.exists():
-                logger.error("検査項目マスターファイルが存在しません: %s", file_path)
-                return pd.DataFrame(), {}
-
-            df = pd.read_excel(file_path)
-            df.rename(
-                columns={"項目コード": "Item_Code", "測定項目": "Measurement_Item"},
-                inplace=True,
-            )
-            item_mapping = dict(zip(df["Item_Code"], df["Measurement_Item"]))
-            cls._measurement_items_cache = (df, item_mapping)
-            logger.info("検査項目マスター読み込み成功: %d件", len(df))
-            return cls._measurement_items_cache
-        except (
-            FileNotFoundError,
-            pd.errors.EmptyDataError,
-            pd.errors.ParserError,
-        ) as e:
-            logger.error("検査項目マスターの読み込みエラー: %s", e)
-            return pd.DataFrame(), {}
-
-    @classmethod
-    def load_employee_data(cls, force_reload: bool = False) -> pd.DataFrame:
-        """検査要員マスタの読み込み"""
-        if cls._employee_data_cache is not None and not force_reload:
-            return cls._employee_data_cache
-
-        try:
-            file_path = Path(Config.employee_master)
-            if not file_path.exists():
-                logger.error("検査要員マスタファイルが存在しません: %s", file_path)
-                return pd.DataFrame()
-
-            cls._employee_data_cache = pd.read_excel(file_path)
-            logger.info(
-                "検査要員マスタ読み込み成功: %d件", len(cls._employee_data_cache)
-            )
-            return cls._employee_data_cache
-        except (
-            FileNotFoundError,
-            pd.errors.EmptyDataError,
-            pd.errors.ParserError,
-        ) as e:
-            logger.error("検査要員マスタの読み込みエラー: %s", e)
-            return pd.DataFrame()
-
-
 class FormValidator:
     """フォームデータ検証"""
 
@@ -495,7 +435,9 @@ def main():
                 "LIMIT 5"
             )
             file_name_df = pd.read_sql_query(query, _conn)
-            return file_name_df["File_Name"].tolist() if not file_name_df.empty else []
+            if not file_name_df.empty:
+                return file_name_df["File_Name"].tolist()
+            return []
         except (
             duckdb.Error,
             pd.errors.DatabaseError,
@@ -612,7 +554,8 @@ def main():
                         "measuring_instrument_usage",
                     ]
                     available_cols = [
-                        col for col in columns_to_show if col in status_log_df.columns
+                        col for col in columns_to_show if
+                        col in status_log_df.columns
                     ]
                     display_status_log = status_log_df[available_cols]
                     display_status_log.columns = [
@@ -686,7 +629,8 @@ def main():
                 # QCマルチルール情報からTypeの値を取得
                 type_options = ["違反したマルチルールを選択してください"]
                 if "Type" in multi_rule_df.columns:
-                    unique_types = multi_rule_df["Type"].dropna().unique().tolist()
+                    unique_types = multi_rule_df["Type"].dropna().unique(
+                        ).tolist()
                     type_options.extend(unique_types)
 
                 qc_type = st.selectbox("タイプ", type_options)

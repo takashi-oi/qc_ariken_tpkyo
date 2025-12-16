@@ -70,7 +70,9 @@ class DataImporter:
     ) -> ProcessedData:
         """アップロードされたデータを処理"""
         try:
-            qc_control_df = pd.read_excel("data/master/qc_control.xlsx")
+            from src.utils.master_loader import MasterDataLoader
+
+            qc_control_df = MasterDataLoader.load_qc_control()
             processed_df = pd.merge(
                 uploaded_df,
                 qc_control_df[

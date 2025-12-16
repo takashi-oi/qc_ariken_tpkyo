@@ -43,9 +43,7 @@ def create_excel_report(df, year, month, return_wb=False):
         # データを日時でソート
         df_sorted = df.sort_values("日時")
         # 日付ごと・Typeごとにピボット
-        pivot = df_sorted.pivot_table(index="日時",
-                                      columns="Type",
-                                      values="PC/SD換算")
+        pivot = df_sorted.pivot_table(index="日時", columns="Type", values="PC/SD換算")
         pivot = pivot.reset_index()
         # グラフデータをエクセルに書き込み（A1から開始）
         start_row = 1
@@ -81,9 +79,7 @@ def create_excel_report(df, year, month, return_wb=False):
             )
             # カテゴリ範囲（A列の日付、ヘッダー行を除く）
             categories = Reference(
-                ws_chart, min_col=1,
-                min_row=data_start_row + 1,
-                max_row=data_end_row
+                ws_chart, min_col=1, min_row=data_start_row + 1, max_row=data_end_row
             )
 
             # カラム名（Type名）を件名として表示
@@ -131,9 +127,7 @@ def create_excel_report_by_date_range(
         # データを日時でソート
         df_sorted = df.sort_values("日時")
         # 日付ごと・Typeごとにピボット
-        pivot = df_sorted.pivot_table(index="日時",
-                                      columns="Type",
-                                      values="PC/SD換算")
+        pivot = df_sorted.pivot_table(index="日時", columns="Type", values="PC/SD換算")
         pivot = pivot.reset_index()
         # グラフデータをエクセルに書き込み（A1から開始）
         start_row = 1
@@ -255,8 +249,10 @@ def main():
             df = pd.read_sql_query(query, conn, params=(start_date, end_date))
             df = df.drop_duplicates()
 
-        # measurement_item.xlsxを読み込み、項目コードで結合
-        df_item = pd.read_excel("data/master/measurement_item.xlsx")
+        # measurement_itemをデータベースから読み込み、項目コードで結合
+        from src.utils.master_loader import MasterDataLoader
+
+        df_item, _ = MasterDataLoader.load_measurement_items()
         df = pd.merge(
             df, df_item, left_on="項目コード", right_on="Item_Code", how="left"
         )
@@ -284,17 +280,14 @@ def main():
             # Lot_Number, TypeごとにSD換算値の基本統計量を算出
             if "Lot Number" in df_sorted.columns:
                 stat_df = (
-                    df_sorted.groupby(["Measurement_Item",
-                                       "Lot Number",
-                                       "Type"])[
+                    df_sorted.groupby(["Measurement_Item", "Lot Number", "Type"])[
                         "PC/SD換算"
                     ]
                     .agg(["mean", "std", "min", "max", "median", "count"])
                     .reset_index()
                 )
                 # 変動係数（CV）を計算し、標準偏差の次の列に挿入
-                stat_df["変動係数(%)"
-                        ] = stat_df["std"] / stat_df["mean"].abs() * 100
+                stat_df["変動係数(%)"] = stat_df["std"] / stat_df["mean"].abs() * 100
                 # 列の順序を調整
                 cols = stat_df.columns.tolist()
                 if "std" in cols and "変動係数(%)" in cols:
@@ -351,16 +344,12 @@ def main():
                     "工程能力指数",
                 ]
                 # 存在する列のみ表示
-                col_order = [col for col in
-                             col_order if col in
-                             stat_df.columns]
+                col_order = [col for col in col_order if col in stat_df.columns]
                 stat_df = stat_df[col_order]
                 # 列名を日本語に
                 stat_df = stat_df.rename(columns={"Measurement_Item": "項目名"})
                 st.markdown(f"####  {year}年{month}月：基本統計量（SD換算）")
-                st.dataframe(stat_df,
-                             use_container_width=True,
-                             hide_index=True)
+                st.dataframe(stat_df, use_container_width=True, hide_index=True)
         else:
             st.info("SD換算データがありません。")
 
@@ -411,9 +400,7 @@ def main():
                     "原因",
                     "CAPA",
                 ]
-                display_cols = [col for col in
-                                display_cols if col in
-                                group.columns]
+                display_cols = [col for col in display_cols if col in group.columns]
                 st.dataframe(group[display_cols], use_container_width=True)
         else:
             st.info("該当期間のデータがありません。")
@@ -466,8 +453,10 @@ def main():
             df = pd.read_sql_query(query, conn, params=(start_date, end_date))
             df = df.drop_duplicates()
 
-        # measurement_item.xlsxを読み込み、項目コードで結合
-        df_item = pd.read_excel("data/master/measurement_item.xlsx")
+        # measurement_itemをデータベースから読み込み、項目コードで結合
+        from src.utils.master_loader import MasterDataLoader
+
+        df_item, _ = MasterDataLoader.load_measurement_items()
         df = pd.merge(
             df, df_item, left_on="項目コード", right_on="Item_Code", how="left"
         )

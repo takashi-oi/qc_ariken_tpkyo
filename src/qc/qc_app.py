@@ -7,6 +7,7 @@ import streamlit as st
 
 from src.data_import.data_importer import DataImporter
 from src.utils.file_processing import ProcessedData
+from src.utils.master_loader import MasterDataLoader
 
 from .qc_database import QCDatabase
 from .qc_display import QCDisplay
@@ -29,11 +30,10 @@ class QCCheckApp:
                 uploaded_file = st.file_uploader(
                     "QCデータファイルをアップロード", type=["xlsx"]
                 )
-                employee_data = pd.read_excel("data/master/employee_code.xlsx")
+
+                employee_data = MasterDataLoader.load_employee_data()
                 measurer_list = [""] + employee_data["Member's_Name"].tolist()
-                measurer = st.selectbox(
-                    "測定者名を選択", measurer_list, index=0
-                )
+                measurer = st.selectbox("測定者名を選択", measurer_list, index=0)
 
             if uploaded_file and measurer and measurer != "":
                 qc_data = await self.data_importer.process_and_display(
