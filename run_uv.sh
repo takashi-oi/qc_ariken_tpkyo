@@ -30,6 +30,12 @@ if ! python -c "import streamlit" 2>/dev/null; then
     uv pip install -r requirements.txt
 fi
 
+# duckdbの確認
+if ! python -c "import duckdb" 2>/dev/null; then
+    echo "duckdbがインストールされていません。インストール中..."
+    uv pip install duckdb duckdb-engine
+fi
+
 # Streamlitアプリケーションを起動
 echo "Streamlitアプリケーションを起動中..."
 echo "ブラウザで http://localhost:8501 にアクセスしてください"

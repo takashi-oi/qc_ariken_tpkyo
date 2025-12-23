@@ -16,8 +16,8 @@ st.set_page_config(
 
 st.markdown("# 株式会社 Lab.Arch")
 st.markdown("## Arch検査システム")
-st.markdown("#### Luminex")
 st.markdown("### 内部精度管理手法 : WESTGARD multi-Rule")
+st.markdown("#### Luminex")
 
 st.markdown("#### メニュー")
 # Homeページへのリンクは削除または案内文のみに

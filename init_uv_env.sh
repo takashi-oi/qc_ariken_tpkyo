@@ -26,7 +26,7 @@ if [ -d ".venv" ]; then
 fi
 
 echo "UV環境を作成中..."
-uv venv --python 3.13
+uv venv --python 3.14
 
 if [ $? -ne 0 ]; then
     echo "エラー: UV環境の作成に失敗しました。"
