@@ -414,7 +414,7 @@ def main():
     """メイン関数"""
     # サイドバーに担当者セレクトボックスを追加（未使用変数は削除）
     employee_df = MasterDataLoader.load_employee_data()
-    
+
     # カラム名の確認とフォールバック処理
     if employee_df.empty:
         measurer_list = [""]
@@ -428,13 +428,13 @@ def main():
             if "Name" in col or "名前" in col or "氏名" in col:
                 name_col = col
                 break
-        
+
         if name_col:
             measurer_list = [""] + employee_df[name_col].dropna().tolist()
         else:
             measurer_list = [""]
             st.sidebar.warning("担当者名のカラムが見つかりません。マスターテーブル管理ページでデータを確認してください。")
-    
+
     st.sidebar.selectbox(
         "担当者を選択",
         options=measurer_list,

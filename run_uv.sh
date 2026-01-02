@@ -1,15 +1,15 @@
 #!/bin/bash
 
-# 株式会社 Lab.Arch 精度管理システム - UV環境起動スクリプト
+# 株式会社 ARCHArch 精度管理システム - UV環境起動スクリプト
 
-echo "=== 株式会社 Lab.Arch 精度管理システム ==="
+echo "=== 株式会社 ARCHArch 精度管理システム ==="
 echo "UV環境での起動を開始します..."
 
 # プロジェクトディレクトリに移動
 cd "$(dirname "$0")"
 
 # UV環境が存在するかチェック
-if [ ! -d ".venv" ]; then
+if [ ! -d "venv" ]; then
     echo "エラー: UV環境が見つかりません。"
     echo "以下のコマンドでUV環境を初期化してください："
     echo "  ./init_uv_env.sh"
@@ -18,15 +18,13 @@ fi
 
 # 仮想環境をアクティベート
 echo "仮想環境をアクティベート中..."
-if [ -f ".venv_standard/bin/activate" ]; then
-    source .venv_standard/bin/activate
-elif [ -f ".venv/bin/activate" ]; then
+if [ -f ".venv/bin/activate" ]; then
     source .venv/bin/activate
 else
     echo "エラー: 仮想環境が見つかりません。"
     echo "以下のコマンドで仮想環境を作成してください："
-    echo "  python3.14 -m venv .venv_standard"
-    echo "  .venv_standard/bin/pip install -r requirements.txt"
+    echo "  python3.14 -m venv .venv"
+    echo "  .venv/bin/pip install -r requirements.txt"
     exit 1
 fi
 

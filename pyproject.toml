@@ -1,7 +1,7 @@
 [project]
 name = "qc-ariken-tokyo"
 version = "1.0.0"
-description = "株式会社 Lab.Arch 精度管理システム"
+description = "株式会社 ARCHArch 精度管理システム"
 readme = "docs/archive/UV_README.md"
 requires-python = ">=3.13"
 dependencies = [

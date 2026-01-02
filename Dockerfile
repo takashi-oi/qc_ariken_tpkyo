@@ -33,6 +33,3 @@ EXPOSE 8501
 # Streamlit 起動
 CMD ["streamlit", "run", "Arch.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
 
-
-
-

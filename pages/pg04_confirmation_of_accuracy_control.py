@@ -5,13 +5,13 @@
 
 import logging
 import os
-import duckdb
 import sqlite3
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 from typing import Dict, Generator, List
 
+import duckdb
 import pandas as pd
 import streamlit as st
 
@@ -120,17 +120,14 @@ class DatabaseManager:
             columns = [row[1] for row in cursor.fetchall()]
             if "date" not in columns:
                 try:
-                    conn.execute(
-                        "ALTER TABLE table_qc_check_log ADD COLUMN date TEXT;")
+                    conn.execute("ALTER TABLE table_qc_check_log ADD COLUMN date TEXT;")
                     logger.info("date カラムを追加しました。")
                 except duckdb.Error as e:
                     logger.error("date カラムの追加に失敗しました: %s", e)
                     st.error(f"date カラムの追加に失敗しました: {e}")
 
     @contextmanager
-    def get_connection(self) -> Generator[duckdb.DuckDBPyConnection,
-                                          None,
-                                          None]:
+    def get_connection(self) -> Generator[duckdb.DuckDBPyConnection, None, None]:
         """データベース接続のコンテキスト管理"""
         conn = None
         try:
@@ -203,15 +200,13 @@ class DatabaseManager:
                         )
                     else:
                         # Batchカラムがない場合は日付のみ
-                        qc_data["date_time_batch"] = qc_data["date_time"
-                                                             ].dt.strftime(
+                        qc_data["date_time_batch"] = qc_data["date_time"].dt.strftime(
                             "%y/%m/%d"
                         )
 
                     # sd_conversionを小数点第3位まで表示
                     if "sd_conversion" in qc_data.columns:
-                        qc_data["sd_conversion"] = qc_data["sd_conversion"
-                                                           ].round(3)
+                        qc_data["sd_conversion"] = qc_data["sd_conversion"].round(3)
 
                 status_data = pd.read_sql_query(
                     query_status,
@@ -302,9 +297,7 @@ class QCCheckUI:
         self._today = today
 
     def init_session_state(self) -> None:
-    def __init__(self,
-                 db_manager: DatabaseManager,
-                 today: date = date.today()):
+        """セッション状態を初期化"""
         if "check_data" not in st.session_state:
             st.session_state["check_data"] = (
                 pd.DataFrame(),
@@ -422,10 +415,13 @@ class QCCheckUI:
                             group.set_index("date_time_batch")["sd_conversion"]
                         )
                     else:
-                        st.line_chart(group.set_index("date_time")["sd_conversion"])
+                        st.line_chart(group.set_index("date_time"
+                                                      )["sd_conversion"])
 
                     # ステータスデータを表示
-                    status_group = status_data[status_data["status_type"] == type_name]
+                    status_group = status_data[status_data[
+                        "status_type"
+                        ] == type_name]
                     if not status_group.empty:
                         st.write("ステータスデータ:")
                         st.dataframe(status_group)
@@ -489,7 +485,9 @@ def main() -> None:
                 "Item_Code" in status_data.columns
                 and "date_time" in status_data.columns
             ):
-                status_data = status_data.sort_values(["Item_Code", "date_time"])
+                status_data = status_data.sort_values(
+                    ["Item_Code", "date_time"]
+                    )
 
             # 表示用のカラムを選択（指定された順序）
             display_columns = [

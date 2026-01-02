@@ -1,17 +1,28 @@
-# ページサイズを定義するためのモジュールをインポート
-from reportlab.lib.pagesizes import letter
-# PDFドキュメントの構造を定義するためのモジュールをインポート
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-# スタイルを定義するためのモジュールをインポート
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+try:
+    # ページサイズを定義するためのモジュールをインポート
+    from reportlab.lib.pagesizes import letter
+    # PDFドキュメントの構造を定義するためのモジュールをインポート
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    # スタイルを定義するためのモジュールをインポート
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+except ImportError:
+    letter = None
+    SimpleDocTemplate = None
+    Paragraph = None
+    Spacer = None
+    Table = None
+    TableStyle = None
+    getSampleStyleSheet = None
+    ParagraphStyle = None
 # PDFの基本設定を行うためのモジュールをインポート
-from reportlab.pdfbase import pdfmetrics
-# フォントを登録するためのモジュールをインポート
-from reportlab.pdfbase.ttfonts import TTFont
+try:
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+except ImportError:
+    pdfmetrics = None
+    TTFont = None
 
-# 正規表現を使用するためのモジュールをインポート
 import re
-# OSの機能を使用するためのモジュールをインポート
 import os
 # プラットフォームの情報を取得するためのモジュールをインポート
 import platform
@@ -118,6 +129,7 @@ def convert_markdown_to_pdf(markdown_file, pdf_file):
                 [cell.strip() for cell in line.split('|')[1:-1]])
         elif in_table and not line.strip():
             if current_table:
+                from reportlab.lib import colors
                 table = Table(current_table)
                 table.setStyle(TableStyle([
                     ('BACKGROUND', (0, 0), (-1, 0), colors.grey),

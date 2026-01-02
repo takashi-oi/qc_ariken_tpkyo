@@ -48,7 +48,8 @@ class DataImporter:
 
             code_batch = name_parts[0].split("_")
             if len(code_batch) < 2:
-                raise ValueError("Invalid file name format: missing code or batch")
+                raise ValueError(
+                    "Invalid file name format: missing code or batch")
 
             return pd.DataFrame(
                 {
@@ -58,7 +59,8 @@ class DataImporter:
                     "Batch": [code_batch[0][1]],
                     "Model": [file.name.split("_")[1].split("-")[0]],
                     "Date_Time": [
-                        pd.to_datetime(name_parts[1]).strftime("%Y/%m/%d %H:%M:%S")
+                        pd.to_datetime(
+                            name_parts[1]).strftime("%Y/%m/%d %H:%M:%S")
                     ],
                 }
             )
@@ -76,7 +78,8 @@ class DataImporter:
             processed_df = pd.merge(
                 uploaded_df,
                 qc_control_df[
-                    qc_control_df["Item_Code"] == file_info["Item_Code"].iloc[0]
+                    qc_control_df["Item_Code"
+                                  ] == file_info["Item_Code"].iloc[0]
                 ],
                 how="left",
             )
@@ -90,7 +93,8 @@ class DataImporter:
 
             # IC データの処理
             ic_df = processed_df[processed_df["Type"] == "IC"].copy()
-            ic_df["Verdict"] = ic_df["Ct"].apply(lambda x: "Pass" if x > 10 else "Fail")
+            ic_df["Verdict"] = ic_df["Ct"].apply(
+                lambda x: "Pass" if x > 10 else "Fail")
             ic_df = ic_df[
                 [
                     "File_Name",
@@ -163,7 +167,10 @@ class DataImporter:
             ]
 
             return ProcessedData(
-                file_info=file_info, ic_data=ic_df, nc_data=nc_df, pc_data=pc_df
+                file_info=file_info,
+                ic_data=ic_df,
+                nc_data=nc_df,
+                pc_data=pc_df
             )
 
         except Exception as e:

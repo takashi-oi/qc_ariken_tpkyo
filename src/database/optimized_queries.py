@@ -53,7 +53,10 @@ class OptimizedQueryManager:
             logger.error("QCデータ取得中にエラーが発生: %s", e)
             raise
 
-    def get_westgard_violations(self, start_date: str, end_date: str) -> pd.DataFrame:
+    def get_westgard_violations(self,
+                                start_date: str,
+                                end_date: str
+                                ) -> pd.DataFrame:
         """Westgardルール違反を取得"""
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -79,13 +82,19 @@ class OptimizedQueryManager:
                 ORDER BY qfi.date_time DESC, qwr.total_violations DESC
                 """
 
-                return pd.read_sql_query(query, conn, params=[start_date, end_date])
+                return pd.read_sql_query(
+                    query,
+                    conn,
+                    params=[start_date, end_date])
 
         except sqlite3.Error as e:
             logger.error("Westgard違反データ取得中にエラーが発生: %s", e)
             raise
 
-    def get_activity_log_summary(self, start_date: str, end_date: str) -> pd.DataFrame:
+    def get_activity_log_summary(self,
+                                 start_date: str,
+                                 end_date: str
+                                 ) -> pd.DataFrame:
         """活動ログのサマリーを取得"""
         try:
             with sqlite3.connect(self.db_path) as conn:
@@ -106,14 +115,19 @@ class OptimizedQueryManager:
                 ORDER BY date_time DESC
                 """
 
-                return pd.read_sql_query(query, conn, params=[start_date, end_date])
+                return pd.read_sql_query(query,
+                                         conn,
+                                         params=[start_date,
+                                                 end_date])
 
         except sqlite3.Error as e:
             logger.error("活動ログ取得中にエラーが発生: %s", e)
             raise
 
     def get_measurement_statistics(
-        self, item_code: Optional[str] = None, measurement_type: Optional[str] = None
+        self,
+        item_code: Optional[str] = None,
+        measurement_type: Optional[str] = None
     ) -> Dict[str, Any]:
         """測定データの統計情報を取得"""
         try:
@@ -237,7 +251,8 @@ class OptimizedQueryManager:
                 page_count = cursor.fetchone()[0]
                 cursor.execute("PRAGMA page_size")
                 page_size = cursor.fetchone()[0]
-                metrics["database_size_mb"] = (page_count * page_size) / (1024 * 1024)
+                metrics["database_size_mb"] = (
+                    page_count * page_size) / (1024 * 1024)
 
                 return metrics
 

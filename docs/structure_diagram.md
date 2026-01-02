@@ -1,7 +1,7 @@
 # QC有研東京プロジェクト構造図
 
 ## プロジェクト概要
-株式会社株式会社 Lab.Archの精度管理システム（QCシステム）のファイル構造と関係性を示す図式です。
+株式会社株式会社 ARCHArchの精度管理システム（QCシステム）のファイル構造と関係性を示す図式です。
 
 ## システムアーキテクチャ
 
@@ -164,34 +164,34 @@ graph LR
 - `Arch.code-workspace` - VS Codeワークスペース設定
 
 ### ページモジュール（pages/）
-| ファイル | 機能 | 主要な依存関係 |
-|---------|------|---------------|
-| `pg01_qc_check.py` | 管理試料測定結果登録・確認 | database, models, utils, data_import |
-| `pg02_test_status.py` | 測定状況登録 | database, config |
-| `pg03_qc_act_log.py` | 精度管理試料測定結果対応 | database, utils |
-| `pg04_confirmation_of_accuracy_control.py` | 精度管理実施状況確認 | database, utils |
-| `pg05_statical.py` | 精度管理図出力 | database, utils |
-| `pg99_master_table.py` | マスターテーブル管理 | database, config |
+| ファイル                                   | 機能                       | 主要な依存関係                       |
+| ------------------------------------------ | -------------------------- | ------------------------------------ |
+| `pg01_qc_check.py`                         | 管理試料測定結果登録・確認 | database, models, utils, data_import |
+| `pg02_test_status.py`                      | 測定状況登録               | database, config                     |
+| `pg03_qc_act_log.py`                       | 精度管理試料測定結果対応   | database, utils                      |
+| `pg04_confirmation_of_accuracy_control.py` | 精度管理実施状況確認       | database, utils                      |
+| `pg05_statical.py`                         | 精度管理図出力             | database, utils                      |
+| `pg99_master_table.py`                     | マスターテーブル管理       | database, config                     |
 
 ### ソースコード（src/）
-| ディレクトリ/ファイル | 機能 | 主要な依存関係 |
-|---------------------|------|---------------|
-| `config.py` | 設定・ロギング管理 | - |
-| `database/connection.py` | データベース接続管理 | config |
-| `database/tables.py` | テーブル定義 | - |
-| `models/westgard_rules.py` | Westgardルール実装 | database |
-| `utils/file_processing.py` | ファイル処理 | config |
-| `utils/pdf_generator.py` | PDF生成 | config |
-| `utils/qc_info_log.py` | QC情報ログ | config |
-| `data_import/data_importer.py` | データインポート | config, utils |
+| ディレクトリ/ファイル          | 機能                 | 主要な依存関係 |
+| ------------------------------ | -------------------- | -------------- |
+| `config.py`                    | 設定・ロギング管理   | -              |
+| `database/connection.py`       | データベース接続管理 | config         |
+| `database/tables.py`           | テーブル定義         | -              |
+| `models/westgard_rules.py`     | Westgardルール実装   | database       |
+| `utils/file_processing.py`     | ファイル処理         | config         |
+| `utils/pdf_generator.py`       | PDF生成              | config         |
+| `utils/qc_info_log.py`         | QC情報ログ           | config         |
+| `data_import/data_importer.py` | データインポート     | config, utils  |
 
 ### データファイル
-| ディレクトリ | 内容 | 用途 |
-|-------------|------|------|
-| `db_folder/` | SQLiteデータベースファイル | 測定データ保存 |
-| `master_folder/` | Excelマスターファイル | マスターデータ管理 |
-| `logs/` | ログファイル | システムログ |
-| `docs/` | ドキュメント | システム仕様書 |
+| ディレクトリ     | 内容                       | 用途               |
+| ---------------- | -------------------------- | ------------------ |
+| `db_folder/`     | SQLiteデータベースファイル | 測定データ保存     |
+| `master_folder/` | Excelマスターファイル      | マスターデータ管理 |
+| `logs/`          | ログファイル               | システムログ       |
+| `docs/`          | ドキュメント               | システム仕様書     |
 
 ## 技術スタック
 
@@ -235,4 +235,4 @@ graph TD
     G --> A
 ```
 
-この構造により、株式会社 Lab.Archの精度管理システムは効率的で保守性の高いシステムとして運用されています。
+この構造により、株式会社 ARCHArchの精度管理システムは効率的で保守性の高いシステムとして運用されています。

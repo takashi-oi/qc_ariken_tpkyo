@@ -126,7 +126,10 @@ class MasterDatabaseManager:
 
             # Excelファイルをメモリ上に作成
             output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:  # pyright: ignore[reportArgumentType]
+            with pd.ExcelWriter(output,
+                                engine='openpyxl'
+                                ) as writer:
+                # pyright: ignore[reportArgumentType]
                 df.to_excel(writer, index=False, sheet_name='Sheet1')
             output.seek(0)
 
@@ -588,7 +591,6 @@ with st.sidebar:
     ):
         st.session_state.selected_table = "qc_control"
         st.rerun()
-    
     st.divider()
 
     # 選択されたテーブルの表示
@@ -597,20 +599,20 @@ with st.sidebar:
     display_name = TABLE_DISPLAY_NAMES[selected_table_key]
 
     st.markdown(f"### 現在選択: {display_name}")
-    
+
     st.divider()
-    
+
     # アクションボタン
     st.markdown("### データ操作")
-    
+
     if st.button("🔄 最新データを読み込む", key="btn_refresh", use_container_width=True):
         # キャッシュをクリアして最新データを読み込む
         load_master_data_cached.clear()
         st.success("最新データを読み込みました。")
         st.rerun()
-    
+
     st.divider()
-    
+
     # Excelインポート
     st.markdown("### 📥 Excelインポート")
     uploaded_file = st.file_uploader(
@@ -636,9 +638,9 @@ with st.sidebar:
                     st.rerun()
                 else:
                     st.error("データのインポートに失敗しました。")
-    
+
     st.divider()
-    
+
     # Excelエクスポート
     st.markdown("### 📤 Excelエクスポート")
     if db_manager.check_table_has_data(table_name):
@@ -679,9 +681,9 @@ with st.sidebar:
             )
     else:
         st.info("エクスポートするデータがありません。")
-    
+
     st.divider()
-    
+
     # データ移行（既存のExcelファイルから）
     st.markdown("### データ移行")
     if st.button(
@@ -725,7 +727,7 @@ except sqlite3.Error:
 if table_exists and db_manager.check_table_has_data(table_name):
     # データが存在する場合
     df = db_manager.load_master_data(table_name)
-    
+
     if df.empty:
         # データが空の場合、スキーマに基づいて空のDataFrameを作成
         df = db_manager.create_empty_dataframe(table_name)
@@ -748,7 +750,7 @@ else:
             f"{display_name}のデータがありません。"
             "下記のエディタで新規データを追加できます。"
         )
-    
+
     # 空のDataFrameを作成（スキーマに基づく）
     df = db_manager.create_empty_dataframe(table_name)
 
@@ -761,7 +763,7 @@ if not df.empty or table_exists:
         "- 行を削除: 行の左側のチェックボックスを選択して削除"
     )
     st.markdown("- データを編集: セルをクリックして直接編集")
-    
+
     edited_df = st.data_editor(
         df,
         num_rows="dynamic",
@@ -769,7 +771,7 @@ if not df.empty or table_exists:
         key=f"editor_{selected_table_key}",
         hide_index=True,
     )
-    
+
     # 保存ボタン（データエディタの下に配置）
     col1, col2 = st.columns([1, 4])
     with col1:
@@ -783,17 +785,17 @@ if not df.empty or table_exists:
                 # idカラムが存在する場合は削除（自動採番のため）
                 if 'id' in edited_df.columns:
                     edited_df = edited_df.drop(columns=['id'])
-                
+
                 # 空の行を削除（すべての値がNaNまたは空の行）
                 edited_df = edited_df.dropna(how='all')
-                
+
                 if not edited_df.empty:
                     # テーブル構造を確保
                     if not table_exists:
                         db_manager.ensure_table_structure(
                             table_name, edited_df
                         )
-                    
+
                     # 保存を実行
                     try:
                         success, error_msg = db_manager.save_master_data(

@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# 株式会社 Lab.Arch 精度管理システム - UV環境初期化スクリプト
+# 株式会社 ARCHArch 精度管理システム - UV環境初期化スクリプト
 
-echo "=== 株式会社 Lab.Arch 精度管理システム ==="
+echo "=== 株式会社 ARCHArch 精度管理システム ==="
 echo "UV環境の初期化を開始します..."
 
 # UVがインストールされているかチェック
@@ -20,13 +20,13 @@ echo "UVバージョン: $(uv --version)"
 cd "$(dirname "$0")"
 
 # UV環境の作成（.venvフォルダ）
-if [ -d ".venv" ]; then
+if [ -d "venv" ]; then
     echo "既存のUV環境が見つかりました。削除して再作成します..."
-    rm -rf .venv
+    rm -rf venv
 fi
 
 echo "UV環境を作成中..."
-uv venv --python 3.14
+uv venv venv --python 3.14
 
 if [ $? -ne 0 ]; then
     echo "エラー: UV環境の作成に失敗しました。"

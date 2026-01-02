@@ -27,6 +27,3 @@ networks:
   arch-network:
     driver: bridge
 
-
-
-

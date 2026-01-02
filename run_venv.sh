@@ -1,18 +1,19 @@
 #!/bin/bash
 
-# 株式会社 Lab.Arch 精度管理システム - 仮想環境起動スクリプト (Python 3.12.7)
+# 株式会社 ARCHArch 精度管理システム - 仮想環境起動スクリプト (Python 3.12.7)
 
-echo "=== 株式会社 Lab.Arch 精度管理システム ==="
+echo "=== 株式会社 ARCHArch 精度管理システム ==="
 echo "Python 3.12.7 仮想環境での起動を開始します..."
 
 # プロジェクトディレクトリに移動
 cd "$(dirname "$0")"
 
 # 仮想環境が存在するかチェック
-if [ ! -d "venv" ]; then
+VENV_DIR="venv"
+if [ ! -d "$VENV_DIR" ]; then
     echo "エラー: 仮想環境が見つかりません。"
     echo "以下のコマンドでPython 3.12.7の仮想環境を作成してください："
-    echo "python3.12 -m venv venv"
+    echo "python3.12 -m venv $VENV_DIR"
     exit 1
 fi
 
