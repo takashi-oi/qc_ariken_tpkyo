@@ -63,5 +63,25 @@
   "cline.testing": true,
   "cline.documentation": true,
   "cline.showSuggestions": true,
-  "cline.inlineSuggestions": true
+  "cline.inlineSuggestions": true,
+  "cursorpyright.analysis.autoImportCompletions": true,
+  "cursorpyright.analysis.autoSearchPaths": true,
+  "cursorpyright.analysis.diagnosticMode": "workspace",
+  "cursorpyright.analysis.exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".venv",
+    "venv",
+    "**/*.pyc"
+  ],
+  "cursorpyright.analysis.extraPaths": ["./src", "pages"],
+  "cursorpyright.analysis.ignore": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".venv",
+    "venv"
+  ],
+  "cursorpyright.analysis.include": ["pages", "src"],
+  "cursorpyright.analysis.stubPath": "./typings",
+  "cursorpyright.analysis.typeCheckingMode": "off"
 }

@@ -414,14 +414,32 @@ def main():
     """メイン関数"""
     # サイドバーに担当者セレクトボックスを追加（未使用変数は削除）
     employee_df = MasterDataLoader.load_employee_data()
-    if not employee_df.empty and "Member's_Name" in employee_df.columns:
-        st.sidebar.selectbox(
-            "担当者を選択",
-            options=[""] + employee_df["Member's_Name"].tolist(),
-            key="sidebar_implementor",
-        )
+    
+    # カラム名の確認とフォールバック処理
+    if employee_df.empty:
+        measurer_list = [""]
+        st.sidebar.warning("担当者マスターデータがありません。マスターテーブル管理ページでデータを登録してください。")
+    elif "Member's_Name" in employee_df.columns:
+        measurer_list = [""] + employee_df["Member's_Name"].dropna().tolist()
     else:
-        st.sidebar.error("従業員マスターの読み込みに失敗しました。")
+        # 代替カラム名を探す
+        name_col = None
+        for col in employee_df.columns:
+            if "Name" in col or "名前" in col or "氏名" in col:
+                name_col = col
+                break
+        
+        if name_col:
+            measurer_list = [""] + employee_df[name_col].dropna().tolist()
+        else:
+            measurer_list = [""]
+            st.sidebar.warning("担当者名のカラムが見つかりません。マスターテーブル管理ページでデータを確認してください。")
+    
+    st.sidebar.selectbox(
+        "担当者を選択",
+        options=measurer_list,
+        key="sidebar_implementor",
+    )
 
     # サイドバーに直近で読み込んだファイル名5件をセレクトボックスで表示
     @st.cache_data(ttl=300)  # 5分間キャッシュ

@@ -302,7 +302,9 @@ class QCCheckUI:
         self._today = today
 
     def init_session_state(self) -> None:
-        """セッション状態を初期化"""
+    def __init__(self,
+                 db_manager: DatabaseManager,
+                 today: date = date.today()):
         if "check_data" not in st.session_state:
             st.session_state["check_data"] = (
                 pd.DataFrame(),
@@ -370,7 +372,9 @@ class QCCheckUI:
 
         qc_data, status_data, act_log_data = check_data  # ここでデフォルト値を設定
 
-        if qc_data is None or (isinstance(qc_data, pd.DataFrame) and qc_data.empty):
+        if qc_data is None or (isinstance(qc_data,
+                                          pd.DataFrame
+                                          ) and qc_data.empty):
             st.warning("QCデータがありません")
             return []
 

@@ -199,7 +199,27 @@ with st.sidebar:  # サイドバーにウィジェットを配置
         from src.utils.master_loader import MasterDataLoader
 
         employee_data = MasterDataLoader.load_employee_data()
-        measurer_list = [""] + employee_data["Member's_Name"].tolist()
+        
+        # カラム名の確認とフォールバック処理
+        if employee_data.empty:
+            measurer_list = [""]
+            st.warning("担当者マスターデータがありません。マスターテーブル管理ページでデータを登録してください。")
+        elif "Member's_Name" in employee_data.columns:
+            measurer_list = [""] + employee_data["Member's_Name"].dropna().tolist()
+        else:
+            # 代替カラム名を探す
+            name_col = None
+            for col in employee_data.columns:
+                if "Name" in col or "名前" in col or "氏名" in col:
+                    name_col = col
+                    break
+            
+            if name_col:
+                measurer_list = [""] + employee_data[name_col].dropna().tolist()
+            else:
+                measurer_list = [""]
+                st.warning("担当者名のカラムが見つかりません。マスターテーブル管理ページでデータを確認してください。")
+
         selected_measurer = st.selectbox(  # ドロップダウンリスト
             "測定者名", measurer_list, index=0
         )  # ラベルと選択肢

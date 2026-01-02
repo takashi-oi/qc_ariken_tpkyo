@@ -23,6 +23,7 @@ MANIFEST
 
 # Virtual Environment
 .venv/
+.venv_standard/
 venv/
 ENV/
 env/
@@ -51,6 +52,8 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+*.db.wal
+your_database.db
 
 # Excel files (temporary)
 *.xlsx
@@ -63,4 +66,15 @@ logs/
 .history/
 
 # Cline
-.cline/ 
+.cline/
+
+# Backup files
+backup/
+*.bak
+*~
+
+# Temporary files
+constraints.txt
+docker-compose 2.yml
+Dockerfile 2
+.dockerignore 2 

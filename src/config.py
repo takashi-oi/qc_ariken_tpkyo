@@ -12,6 +12,8 @@ class Config:
     QC_DATABASE_PATH = "db_folder/qc_data_base.db"
     # マスタデータ用（SQLite3）
     MASTER_DATABASE_PATH = "db_folder/master_data.db"
+    # 試薬管理データ用（SQLite3）
+    REAGENT_DATABASE_PATH = "db_folder/reagent.db"
     # 後方互換性のため（QCデータ用）
     DATABASE_PATH = QC_DATABASE_PATH
     MASTER_FOLDER = "master_folder"
@@ -39,9 +41,7 @@ class Config:
 
         # ファイル出力用ハンドラ（ローテーション付き）
         file_handler = RotatingFileHandler(
-            cls.LOG_FILE,
-            maxBytes=cls.LOG_MAX_BYTES,
-            backupCount=cls.LOG_BACKUP_COUNT
+            cls.LOG_FILE, maxBytes=cls.LOG_MAX_BYTES, backupCount=cls.LOG_BACKUP_COUNT
         )
         file_handler.setLevel(logging.DEBUG)
         file_formatter = logging.Formatter(

@@ -1,0 +1,49 @@
+# 仮想環境
+.venv/
+.venv_backup_*/
+venv/
+env/
+ENV/
+
+# キャッシュ
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ログ・DB・データ（ボリュームを使用）
+logs/
+db_folder/
+data/
+*.db
+your_database.db
+backup/
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# ドキュメント（必要に応じて含める）
+*.md
+!README.md
+
+# バッチ・補助スクリプト（不要なら除外）
+Batch_file/
+
+
+
+

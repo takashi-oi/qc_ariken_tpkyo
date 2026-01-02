@@ -126,7 +126,7 @@ class MasterDatabaseManager:
 
             # Excelファイルをメモリ上に作成
             output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:  # pyright: ignore[reportArgumentType]
                 df.to_excel(writer, index=False, sheet_name='Sheet1')
             output.seek(0)
 
@@ -170,36 +170,252 @@ class MasterDatabaseManager:
             logger.error("%sの移行エラー: %s", table_key, e)
             return False
 
-    def load_master_data(self, table_name: str, force_reload: bool = False) -> pd.DataFrame:
+    def load_master_data(
+        self, table_name: str, force_reload: bool = False
+    ) -> pd.DataFrame:
         """マスターデータを読み込む（キャッシュ付き）"""
         if force_reload:
             # キャッシュをクリアして最新データを読み込む
             load_master_data_cached.clear()
         return load_master_data_cached(self.conn, table_name)
 
-    def save_master_data(self, df: pd.DataFrame, table_name: str) -> bool:
-        """マスターデータを保存"""
+    def update_table_structure(
+        self, table_name: str, df: pd.DataFrame
+    ) -> bool:
+        """テーブル構造をDataFrameのカラムに合わせて更新"""
         try:
-            # 既存データを削除
             cursor = self.conn.cursor()
-            cursor.execute(f"DELETE FROM {table_name}")
 
-            # データを挿入
-            df.to_sql(
-                table_name,
-                con=self.conn,
-                if_exists="append",
-                index=False,
-            )
+            # 現在のテーブル構造を取得
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            existing_columns = {row[1] for row in cursor.fetchall()}
+
+            # DataFrameのカラムを取得
+            df_columns = set(df.columns)
+
+            # 不足しているカラムを追加
+            missing_columns = df_columns - existing_columns
+            for col in missing_columns:
+                try:
+                    # データ型を推測（最初の非null値を確認）
+                    dropped = df[col].dropna()
+                    sample_value = (
+                        dropped.iloc[0] if not dropped.empty else None
+                    )
+
+                    if sample_value is None:
+                        col_type = "TEXT"
+                    elif isinstance(sample_value, (int, pd.Int64Dtype)):
+                        col_type = "INTEGER"
+                    elif isinstance(sample_value, (float, pd.Float64Dtype)):
+                        col_type = "REAL"
+                    else:
+                        col_type = "TEXT"
+
+                    # カラム名をエスケープ（SQLiteでは二重引用符を使用）
+                    escaped_col = f'"{col}"'
+                    cursor.execute(
+                        f'ALTER TABLE "{table_name}" '
+                        f"ADD COLUMN {escaped_col} {col_type}"
+                    )
+                    logger.info(
+                        "カラム追加: %s.%s (%s)", table_name, col, col_type
+                    )
+                except sqlite3.Error as e:
+                    logger.warning(
+                        "カラム追加スキップ: %s.%s - %s", table_name, col, e
+                    )
+                    # エラーが発生した場合でも続行
 
             self.conn.commit()
-            # キャッシュをクリア
-            st.cache_data.clear()
-            logger.info("%sの保存成功: %d件", table_name, len(df))
             return True
         except Exception as e:
-            logger.error("%sの保存エラー: %s", table_name, e)
+            logger.error("テーブル構造更新エラー: %s", e)
+            logger.exception("詳細なエラー情報:")
             return False
+
+    def save_master_data(
+        self, df: pd.DataFrame, table_name: str
+    ) -> tuple[bool, str]:
+        """マスターデータを保存
+
+        Returns:
+            tuple[bool, str]: (成功フラグ, エラーメッセージ)
+        """
+        try:
+            # データフレームの検証
+            if df.empty:
+                error_msg = "データフレームが空です。"
+                logger.error("%sの保存エラー: %s", table_name, error_msg)
+                return False, error_msg
+
+            # カラム名の検証
+            if df.columns.empty:
+                error_msg = "カラムが定義されていません。"
+                logger.error("%sの保存エラー: %s", table_name, error_msg)
+                return False, error_msg
+
+            cursor = self.conn.cursor()
+
+            # テーブルが存在するか確認
+            cursor.execute(
+                """
+                SELECT name FROM sqlite_master
+                WHERE type='table' AND name=?
+                """,
+                (table_name,),
+            )
+            table_exists = cursor.fetchone() is not None
+
+            if not table_exists:
+                # テーブルが存在しない場合、作成
+                try:
+                    df.to_sql(
+                        table_name,
+                        con=self.conn,
+                        if_exists="replace",
+                        index=False,
+                    )
+                    self.conn.commit()
+                    logger.info(
+                        "%sのテーブル作成と保存成功: %d件",
+                        table_name,
+                        len(df),
+                    )
+                    st.cache_data.clear()
+                    return True, ""
+                except Exception as e:
+                    error_msg = f"テーブル作成エラー: {str(e)}"
+                    logger.error("%sの保存エラー: %s", table_name, error_msg)
+                    logger.exception("詳細なエラー情報:")
+                    self.conn.rollback()
+                    return False, error_msg
+
+            # テーブル構造を更新（不足しているカラムを追加）
+            update_success = self.update_table_structure(table_name, df)
+            if not update_success:
+                error_msg = "テーブル構造の更新に失敗しました。"
+                logger.warning("%s: %s", table_name, error_msg)
+
+            # カラムが正しく追加されたか確認
+            cursor.execute(f'PRAGMA table_info("{table_name}")')
+            existing_columns = {row[1] for row in cursor.fetchall()}
+            df_columns = set(df.columns)
+            missing_columns = df_columns - existing_columns
+
+            if missing_columns:
+                # カラム追加を再試行
+                logger.warning(
+                    "カラムが不足しています。再試行します: %s",
+                    missing_columns,
+                )
+                for col in missing_columns:
+                    try:
+                        dropped = df[col].dropna()
+                        sample_value = (
+                            dropped.iloc[0] if not dropped.empty else None
+                        )
+
+                        if sample_value is None:
+                            col_type = "TEXT"
+                        elif isinstance(sample_value, (int, pd.Int64Dtype)):
+                            col_type = "INTEGER"
+                        elif isinstance(
+                            sample_value, (float, pd.Float64Dtype)
+                        ):
+                            col_type = "REAL"
+                        else:
+                            col_type = "TEXT"
+
+                        escaped_col = f'"{col}"'
+                        cursor.execute(
+                            f'ALTER TABLE "{table_name}" '
+                            f"ADD COLUMN {escaped_col} {col_type}"
+                        )
+                        logger.info(
+                            "カラム追加（再試行）: %s.%s (%s)",
+                            table_name,
+                            col,
+                            col_type,
+                        )
+                    except sqlite3.Error as e:
+                        error_msg = (
+                            f"カラム '{col}' の追加に失敗しました: {str(e)}"
+                        )
+                        logger.error("%sの保存エラー: %s", table_name, error_msg)
+                        self.conn.rollback()
+                        return False, error_msg
+
+                self.conn.commit()
+
+                # 再度確認
+                cursor.execute(f'PRAGMA table_info("{table_name}")')
+                existing_columns = {row[1] for row in cursor.fetchall()}
+                missing_columns = df_columns - existing_columns
+
+                if missing_columns:
+                    error_msg = (
+                        f"以下のカラムがテーブルに存在しません: "
+                        f"{', '.join(missing_columns)}。"
+                        "テーブル構造の更新に失敗しました。"
+                    )
+                    logger.error("%sの保存エラー: %s", table_name, error_msg)
+                    self.conn.rollback()
+                    return False, error_msg
+
+            # 既存データを削除
+            try:
+                cursor.execute(f'DELETE FROM "{table_name}"')
+            except sqlite3.Error as e:
+                error_msg = f"既存データの削除エラー: {str(e)}"
+                logger.error("%sの保存エラー: %s", table_name, error_msg)
+                self.conn.rollback()
+                return False, error_msg
+
+            # データを挿入
+            try:
+                df.to_sql(
+                    table_name,
+                    con=self.conn,
+                    if_exists="append",
+                    index=False,
+                )
+                self.conn.commit()
+                # キャッシュをクリア
+                st.cache_data.clear()
+                logger.info("%sの保存成功: %d件", table_name, len(df))
+                return True, ""
+            except sqlite3.IntegrityError as e:
+                error_msg = (
+                    f"データ整合性エラー: {str(e)}。"
+                    "重複データや制約違反の可能性があります。"
+                )
+                logger.error("%sの保存エラー: %s", table_name, error_msg)
+                logger.exception("詳細なエラー情報:")
+                self.conn.rollback()
+                return False, error_msg
+            except sqlite3.OperationalError as e:
+                error_msg = f"データベース操作エラー: {str(e)}"
+                logger.error("%sの保存エラー: %s", table_name, error_msg)
+                logger.exception("詳細なエラー情報:")
+                self.conn.rollback()
+                return False, error_msg
+            except Exception as e:
+                error_msg = f"予期しないエラー: {str(e)}"
+                logger.error("%sの保存エラー: %s", table_name, error_msg)
+                logger.exception("詳細なエラー情報:")
+                self.conn.rollback()
+                return False, error_msg
+
+        except Exception as e:
+            error_msg = f"予期しないエラー: {str(e)}"
+            logger.error("%sの保存エラー: %s", table_name, error_msg)
+            logger.exception("詳細なエラー情報:")
+            try:
+                self.conn.rollback()
+            except Exception:
+                pass
+            return False, error_msg
 
     def check_table_has_data(self, table_name: str) -> bool:
         """テーブルにデータが存在するか確認"""
@@ -209,6 +425,89 @@ class MasterDatabaseManager:
             result = cursor.fetchone()
             return result[0] > 0 if result else False
         except sqlite3.Error:
+            return False
+
+    def get_table_schema(self, table_name: str) -> list:
+        """テーブルのスキーマ（カラム名）を取得"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            columns = cursor.fetchall()
+            # idカラムを除いたカラム名のリストを返す
+            return [col[1] for col in columns if col[1] != 'id']
+        except sqlite3.Error as e:
+            logger.error("スキーマ取得エラー: %s", e)
+            return []
+
+    def create_empty_dataframe(self, table_name: str) -> pd.DataFrame:
+        """テーブルのスキーマに基づいて空のDataFrameを作成"""
+        columns = self.get_table_schema(table_name)
+        if columns:
+            return pd.DataFrame(columns=columns)
+        else:
+            # テーブルが存在しない場合、基本的なカラム構造を推測
+            table_key = None
+            for key, name in MASTER_TABLES.items():
+                if name == table_name:
+                    table_key = key
+                    break
+
+            # テーブルタイプに応じた基本カラム構造
+            default_columns = {
+                "employee_code": ["Member's_Name"],
+                "measurement_item": ["Item_Code", "Measurement_Item"],
+                "measuring_model": ["Model_Name"],
+                "qc_control": ["Item_Code", "Control_Name"],
+            }
+
+            if table_key and table_key in default_columns:
+                return pd.DataFrame(columns=default_columns[table_key])
+            else:
+                # デフォルトのカラム構造
+                return pd.DataFrame(columns=["Name", "Code"])
+
+    def ensure_table_structure(
+        self, table_name: str, df: pd.DataFrame
+    ) -> bool:
+        """テーブルが存在しない場合、DataFrameの構造に基づいてテーブルを作成"""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                SELECT name FROM sqlite_master
+                WHERE type='table' AND name=?
+                """,
+                (table_name,),
+            )
+            table_exists = cursor.fetchone() is not None
+
+            if not table_exists:
+                if df.empty:
+                    # データが空の場合、最小限のテーブルを作成
+                    cursor.execute(
+                        f"""
+                        CREATE TABLE IF NOT EXISTS {table_name} (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT
+                        )
+                        """
+                    )
+                    self.conn.commit()
+                    logger.info("最小限のテーブル構造を作成: %s", table_name)
+                else:
+                    # データがある場合、DataFrameの構造に基づいてテーブルを作成
+                    df.to_sql(
+                        table_name,
+                        con=self.conn,
+                        if_exists="replace",
+                        index=False,
+                    )
+                    self.conn.commit()
+                    logger.info("テーブル構造を作成: %s", table_name)
+                return True
+            return True
+        except Exception as e:
+            logger.error("テーブル構造の作成エラー: %s", e)
+            logger.exception("詳細なエラー情報:")
             return False
 
     def close(self):
@@ -261,32 +560,42 @@ TABLE_DISPLAY_NAMES = {
 # サイドバーに全てのボタンを配置
 with st.sidebar:
     st.markdown("# マスターテーブル管理")
-    
+
     # テーブル選択ボタン
     st.markdown("### マスターテーブル選択")
-    if st.button("📋 担当者", key="btn_employee", use_container_width=True):
+    if st.button(
+        "📋 担当者", key="btn_employee", use_container_width=True
+    ):
         st.session_state.selected_table = "employee_code"
         st.rerun()
-    
-    if st.button("🔧 測定機器", key="btn_measuring_model", use_container_width=True):
+
+    if st.button(
+        "🔧 測定機器", key="btn_measuring_model", use_container_width=True
+    ):
         st.session_state.selected_table = "measuring_model"
         st.rerun()
-    
-    if st.button("📊 測定パネル", key="btn_measurement_item", use_container_width=True):
+
+    if st.button(
+        "📊 測定パネル",
+        key="btn_measurement_item",
+        use_container_width=True
+    ):
         st.session_state.selected_table = "measurement_item"
         st.rerun()
-    
-    if st.button("⚙️ QC Control", key="btn_qc_control", use_container_width=True):
+
+    if st.button(
+        "⚙️ QC Control", key="btn_qc_control", use_container_width=True
+    ):
         st.session_state.selected_table = "qc_control"
         st.rerun()
     
     st.divider()
-    
+
     # 選択されたテーブルの表示
     selected_table_key = st.session_state.selected_table
     table_name = MASTER_TABLES[selected_table_key]
     display_name = TABLE_DISPLAY_NAMES[selected_table_key]
-    
+
     st.markdown(f"### 現在選択: {display_name}")
     
     st.divider()
@@ -312,9 +621,16 @@ with st.sidebar:
     )
     if uploaded_file is not None:
         st.info(f"ファイル: {uploaded_file.name}")
-        if st.button("インポート実行", key=f"btn_import_{selected_table_key}", use_container_width=True, type="primary"):
+        if st.button(
+            "インポート実行",
+            key=f"btn_import_{selected_table_key}",
+            use_container_width=True,
+            type="primary"
+        ):
             with st.spinner("インポート中..."):
-                if db_manager.import_excel_to_db(uploaded_file, selected_table_key):
+                if db_manager.import_excel_to_db(
+                    uploaded_file, selected_table_key
+                ):
                     load_master_data_cached.clear()
                     st.success(f"{display_name}のデータをインポートしました。")
                     st.rerun()
@@ -326,25 +642,38 @@ with st.sidebar:
     # Excelエクスポート
     st.markdown("### 📤 Excelエクスポート")
     if db_manager.check_table_has_data(table_name):
-        if st.button("エクスポート実行", key=f"btn_export_{selected_table_key}", use_container_width=True, type="primary"):
+        if st.button(
+            "エクスポート実行",
+            key=f"btn_export_{selected_table_key}",
+            use_container_width=True,
+            type="primary"
+        ):
             with st.spinner("エクスポート中..."):
                 try:
                     excel_data = db_manager.export_db_to_excel(table_name)
-                    excel_filename = f"{display_name}_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
-                    st.session_state.export_data[selected_table_key] = excel_data
-                    st.session_state.export_filename[selected_table_key] = excel_filename
+                    timestamp = pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')
+                    excel_filename = f"{display_name}_{timestamp}.xlsx"
+                    st.session_state.export_data[selected_table_key] = (
+                        excel_data
+                    )
+                    st.session_state.export_filename[selected_table_key] = (
+                        excel_filename
+                    )
                     st.success("エクスポートデータを準備しました。")
                     st.rerun()
                 except Exception as e:
                     st.error(f"エクスポートエラー: {e}")
-        
+
         # エクスポートデータが準備されている場合はダウンロードボタンを表示
         if selected_table_key in st.session_state.export_data:
             st.download_button(
                 label="📥 Excelファイルをダウンロード",
                 data=st.session_state.export_data[selected_table_key],
                 file_name=st.session_state.export_filename[selected_table_key],
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                mime=(
+                    "application/vnd.openxmlformats-officedocument"
+                    ".spreadsheetml.sheet"
+                ),
                 key=f"download_{selected_table_key}",
                 use_container_width=True
             )
@@ -355,7 +684,9 @@ with st.sidebar:
     
     # データ移行（既存のExcelファイルから）
     st.markdown("### データ移行")
-    if st.button("ExcelからDBへ全データ移行", use_container_width=True):
+    if st.button(
+        "ExcelからDBへ全データ移行", use_container_width=True
+    ):
         with st.spinner("データを移行中..."):
             for table_key in MASTER_TABLES.keys():
                 if db_manager.migrate_excel_to_db(table_key):
@@ -376,38 +707,139 @@ display_name = TABLE_DISPLAY_NAMES[selected_table_key]
 st.markdown(f"## {display_name}")
 
 # データの読み込みと表示
-if not db_manager.check_table_has_data(table_name):
-    st.info(f"{display_name}のデータがありません。Excelから移行するか、データを追加してください。")
-    edited_df = pd.DataFrame()
-else:
-    # データを読み込む
+# テーブルが存在するか確認
+try:
+    cursor = db_manager.conn.cursor()
+    cursor.execute(
+        """
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name=?
+        """,
+        (table_name,),
+    )
+    table_exists = cursor.fetchone() is not None
+except sqlite3.Error:
+    table_exists = False
+
+# データの読み込み
+if table_exists and db_manager.check_table_has_data(table_name):
+    # データが存在する場合
     df = db_manager.load_master_data(table_name)
     
     if df.empty:
-        st.info(f"{display_name}のデータが空です。データを追加してください。")
-        edited_df = pd.DataFrame()
+        # データが空の場合、スキーマに基づいて空のDataFrameを作成
+        df = db_manager.create_empty_dataframe(table_name)
+        st.info(
+            f"{display_name}のデータが空です。"
+            "下記のエディタで新規データを追加できます。"
+        )
     else:
         st.markdown(f"**データ件数: {len(df)}件**")
-        
-        # データエディタで編集可能にする
-        edited_df = st.data_editor(
-            df,
-            num_rows="dynamic",
-            use_container_width=True,
-            key=f"editor_{selected_table_key}",
+else:
+    # テーブルが存在しない、またはデータがない場合
+    if not table_exists:
+        st.info(
+            f"{display_name}のテーブルが存在しません。"
+            "下記のエディタで新規データを追加すると、"
+            "テーブルが自動作成されます。"
         )
-        
-        # 保存ボタン（データエディタの下に配置）
-        if st.button("💾 変更を保存", key="btn_save", use_container_width=True, type="primary"):
+    else:
+        st.info(
+            f"{display_name}のデータがありません。"
+            "下記のエディタで新規データを追加できます。"
+        )
+    
+    # 空のDataFrameを作成（スキーマに基づく）
+    df = db_manager.create_empty_dataframe(table_name)
+
+# データエディタで編集可能にする（データが空でも表示）
+if not df.empty or table_exists:
+    st.markdown("### データ編集")
+    st.markdown("**操作方法:**")
+    st.markdown("- 行を追加: 表の下部の空行にデータを入力")
+    st.markdown(
+        "- 行を削除: 行の左側のチェックボックスを選択して削除"
+    )
+    st.markdown("- データを編集: セルをクリックして直接編集")
+    
+    edited_df = st.data_editor(
+        df,
+        num_rows="dynamic",
+        use_container_width=True,
+        key=f"editor_{selected_table_key}",
+        hide_index=True,
+    )
+    
+    # 保存ボタン（データエディタの下に配置）
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button(
+            "💾 変更を保存",
+            key="btn_save",
+            use_container_width=True,
+            type="primary"
+        ):
             if not edited_df.empty:
-                if db_manager.save_master_data(edited_df, table_name):
-                    load_master_data_cached.clear()
-                    st.success(f"{display_name}のデータを保存しました。")
-                    st.rerun()
+                # idカラムが存在する場合は削除（自動採番のため）
+                if 'id' in edited_df.columns:
+                    edited_df = edited_df.drop(columns=['id'])
+                
+                # 空の行を削除（すべての値がNaNまたは空の行）
+                edited_df = edited_df.dropna(how='all')
+                
+                if not edited_df.empty:
+                    # テーブル構造を確保
+                    if not table_exists:
+                        db_manager.ensure_table_structure(
+                            table_name, edited_df
+                        )
+                    
+                    # 保存を実行
+                    try:
+                        success, error_msg = db_manager.save_master_data(
+                            edited_df, table_name
+                        )
+                        if success:
+                            load_master_data_cached.clear()
+                            st.success(
+                                f"{display_name}のデータを保存しました。"
+                                f"（{len(edited_df)}件）"
+                            )
+                            st.rerun()
+                        else:
+                            st.error(
+                                f"データの保存に失敗しました。\n\n"
+                                f"**エラー詳細:**\n{error_msg}\n\n"
+                                "ログファイル（`qc_check.log`）も確認してください。"
+                            )
+                    except Exception as e:
+                        error_detail = str(e)
+                        st.error(
+                            f"データの保存中にエラーが発生しました。\n\n"
+                            f"**エラー詳細:**\n{error_detail}\n\n"
+                            "ログファイル（`qc_check.log`）も確認してください。"
+                        )
+                        logger.exception("保存エラーの詳細:")
                 else:
-                    st.error("データの保存に失敗しました。")
+                    st.warning(
+                        "有効なデータがありません。すべての行が空です。"
+                    )
             else:
                 st.warning("保存するデータがありません。")
+
+    with col2:
+        if st.button(
+            "🔄 リセット", key="btn_reset", use_container_width=True
+        ):
+            load_master_data_cached.clear()
+            st.rerun()
+else:
+    # テーブルが存在せず、スキーマも取得できない場合
+    st.warning(
+        f"{display_name}のテーブル構造が不明です。"
+        "まずExcelファイルからインポートするか、"
+        "データ移行を実行してください。"
+    )
 
 # クリーンアップ
 db_manager.close()

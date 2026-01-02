@@ -1,8 +1,8 @@
 [project]
 name = "qc-ariken-tokyo"
 version = "1.0.0"
-description = "有研東京検査所 精度管理システム"
-readme = "UV_README.md"
+description = "株式会社 Lab.Arch 精度管理システム"
+readme = "docs/archive/UV_README.md"
 requires-python = ">=3.13"
 dependencies = [
     "streamlit>=1.47.0",
