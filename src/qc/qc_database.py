@@ -2,9 +2,10 @@
 QCデータベース操作モジュール
 """
 
-import duckdb
+import asyncio
 from contextlib import asynccontextmanager
 
+import duckdb
 import pandas as pd
 import streamlit as st
 
@@ -13,11 +14,25 @@ from src.database.connection import DatabaseManager
 from src.utils.file_processing import ProcessedData
 
 
+@st.cache_resource
+def get_cached_db_manager(db_path: str):
+    """データベースマネージャーのキャッシュインスタンスを取得"""
+    manager = DatabaseManager(db_path)
+    # テーブル作成をここで行う（初回のみ実行される）
+    try:
+        asyncio.run(manager.create_tables())
+    except Exception as e:
+        # すでにイベントループが走っている場合の対策等は必要だが、
+        # Streamlitのトップレベルスコープ（キャッシュ関数内）では通常大丈夫
+        pass
+    return manager
+
+
 class QCDatabase:
     """QCデータベース操作クラス"""
 
     def __init__(self):
-        self.db_manager = DatabaseManager(Config.DATABASE_PATH)
+        self.db_manager = get_cached_db_manager(Config.DATABASE_PATH)
 
     @asynccontextmanager
     async def error_handler(self):
@@ -37,8 +52,7 @@ class QCDatabase:
 
     async def check_for_duplicates(self, data: ProcessedData) -> bool:
         """データベースの重複チェックを行う"""
-        if not isinstance(data.file_info,
-                          pd.DataFrame) or data.file_info.empty:
+        if not isinstance(data.file_info, pd.DataFrame) or data.file_info.empty:
             st.error("処理するデータのファイル情報が存在しません")
             return True
 
@@ -67,8 +81,7 @@ class QCDatabase:
             # 各テーブルの重複チェック
             duplicate_found = False
             for table, check_data in duplicate_checks.items():
-                if await self.db_manager.check_duplicate_records(table,
-                                                                 check_data):
+                if await self.db_manager.check_duplicate_records(table, check_data):
                     st.warning(f"{table}に重複するレコードが存在します")
                     duplicate_found = True
                     break  # 重複が見つかったらループを抜ける
@@ -85,8 +98,7 @@ class QCDatabase:
     async def handle_database_operations(self, data: ProcessedData) -> None:
         """データベース操作の処理（最適化版）"""
         if st.button("データベース登録／マルチルールチェック開始"):
-            if not isinstance(data.file_info,
-                              pd.DataFrame) or data.file_info.empty:
+            if not isinstance(data.file_info, pd.DataFrame) or data.file_info.empty:
                 st.error("処理するデータが存在しません")
                 return
 

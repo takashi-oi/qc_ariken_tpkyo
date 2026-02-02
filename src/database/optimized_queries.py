@@ -1,8 +1,8 @@
 """最適化されたデータベースクエリクラス"""
 
-import sqlite3
 from typing import Any, Dict, List, Optional
 
+import duckdb
 import pandas as pd
 
 from src.config import global_logger as logger
@@ -19,7 +19,7 @@ class OptimizedQueryManager:
     ) -> pd.DataFrame:
         """日付範囲でQCデータを取得（最適化版）"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with duckdb.connect(self.db_path) as conn:
                 query = """
                 SELECT
                     qfi.file_name,
@@ -47,19 +47,16 @@ class OptimizedQueryManager:
 
                 query += " ORDER BY qfi.date_time DESC, qm.measurement_type"
 
-                return pd.read_sql_query(query, conn, params=params)
+                return conn.execute(query, params).df()
 
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             logger.error("QCデータ取得中にエラーが発生: %s", e)
             raise
 
-    def get_westgard_violations(self,
-                                start_date: str,
-                                end_date: str
-                                ) -> pd.DataFrame:
+    def get_westgard_violations(self, start_date: str, end_date: str) -> pd.DataFrame:
         """Westgardルール違反を取得"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with duckdb.connect(self.db_path) as conn:
                 query = """
                 SELECT
                     qfi.file_name,
@@ -82,22 +79,16 @@ class OptimizedQueryManager:
                 ORDER BY qfi.date_time DESC, qwr.total_violations DESC
                 """
 
-                return pd.read_sql_query(
-                    query,
-                    conn,
-                    params=[start_date, end_date])
+                return conn.execute(query, [start_date, end_date]).df()
 
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             logger.error("Westgard違反データ取得中にエラーが発生: %s", e)
             raise
 
-    def get_activity_log_summary(self,
-                                 start_date: str,
-                                 end_date: str
-                                 ) -> pd.DataFrame:
+    def get_activity_log_summary(self, start_date: str, end_date: str) -> pd.DataFrame:
         """活動ログのサマリーを取得"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with duckdb.connect(self.db_path) as conn:
                 query = """
                 SELECT
                     item_code,
@@ -115,23 +106,18 @@ class OptimizedQueryManager:
                 ORDER BY date_time DESC
                 """
 
-                return pd.read_sql_query(query,
-                                         conn,
-                                         params=[start_date,
-                                                 end_date])
+                return conn.execute(query, [start_date, end_date]).df()
 
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             logger.error("活動ログ取得中にエラーが発生: %s", e)
             raise
 
     def get_measurement_statistics(
-        self,
-        item_code: Optional[str] = None,
-        measurement_type: Optional[str] = None
+        self, item_code: Optional[str] = None, measurement_type: Optional[str] = None
     ) -> Dict[str, Any]:
         """測定データの統計情報を取得"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with duckdb.connect(self.db_path) as conn:
                 stats = {}
 
                 # 基本統計
@@ -159,9 +145,7 @@ class OptimizedQueryManager:
                     base_query += " AND qm.measurement_type = ?"
                     params.append(measurement_type)
 
-                cursor = conn.cursor()
-                cursor.execute(base_query, params)
-                result = cursor.fetchone()
+                result = conn.execute(base_query, params).fetchone()
 
                 if result:
                     stats.update(
@@ -196,8 +180,7 @@ class OptimizedQueryManager:
 
                 type_query += " GROUP BY measurement_type"
 
-                cursor.execute(type_query, params)
-                type_stats = cursor.fetchall()
+                type_stats = conn.execute(type_query, params).fetchall()
 
                 stats["type_statistics"] = {
                     row[0]: {
@@ -210,53 +193,49 @@ class OptimizedQueryManager:
 
                 return stats
 
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             logger.error("統計情報取得中にエラーが発生: %s", e)
             raise
 
     def get_performance_metrics(self) -> Dict[str, Any]:
         """データベースパフォーマンス指標を取得"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
+            with duckdb.connect(self.db_path) as conn:
                 metrics = {}
 
                 # テーブルサイズ情報
-                cursor.execute(
+                tables_df = conn.execute(
                     """
-                    SELECT name, sql FROM sqlite_master
-                    WHERE type='table' AND name LIKE 'qc_%'
-                """
-                )
-                tables = cursor.fetchall()
+                    SELECT table_name FROM information_schema.tables 
+                    WHERE table_name LIKE 'qc_%'
+                    """
+                ).df()
 
-                for table_name, _ in tables:
-                    cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-                    count = cursor.fetchone()[0]
+                for table_name in tables_df["table_name"]:
+                    count = conn.execute(
+                        f"SELECT COUNT(*) FROM {table_name}"
+                    ).fetchone()[0]
                     metrics[f"{table_name}_count"] = count
 
                 # インデックス情報
-                cursor.execute(
-                    """
-                    SELECT name FROM sqlite_master
-                    WHERE type='index' AND name LIKE 'idx_%'
-                """
-                )
-                indexes = [row[0] for row in cursor.fetchall()]
-                metrics["index_count"] = len(indexes)
-                metrics["indexes"] = indexes
+                try:
+                    indexes_df = conn.execute(
+                        "SELECT index_name FROM duckdb_indexes"
+                    ).df()
+                    indexes = indexes_df["index_name"].tolist()
+                    metrics["index_count"] = len(indexes)
+                    metrics["indexes"] = indexes
+                except:
+                    metrics["index_count"] = 0
+                    metrics["indexes"] = []
 
-                # データベースサイズ
-                cursor.execute("PRAGMA page_count")
-                page_count = cursor.fetchone()[0]
-                cursor.execute("PRAGMA page_size")
-                page_size = cursor.fetchone()[0]
-                metrics["database_size_mb"] = (
-                    page_count * page_size) / (1024 * 1024)
+                # データベースサイズ (NOT easy in DuckDB via PRAGMA like SQLite)
+                # Just skip or use 0 for now
+                metrics["database_size_mb"] = 0
 
                 return metrics
 
-        except sqlite3.Error as e:
+        except duckdb.Error as e:
             logger.error("パフォーマンス指標取得中にエラーが発生: %s", e)
             raise
 

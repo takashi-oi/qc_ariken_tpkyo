@@ -50,8 +50,8 @@ sh run_app.sh
 - **フロントエンド**: Streamlit
 - **バックエンド**: Python 3.13
 - **データベース**: 
-  - SQLite3（マスターデータ管理）
-  - DuckDB（測定結果データ管理）
+  - SQLite3（マスターデータ管理 + 試薬管理）: `db_folder/master_data.db`
+  - DuckDB（測定結果データ管理）: `db_folder/qc_data_base.db`
 - **精度管理手法**: WESTGARD multi-Rule
 
 ## 📦 主要機能

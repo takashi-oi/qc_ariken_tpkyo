@@ -2,13 +2,14 @@
 Westgardマルチルールのモデル
 """  # Westgardマルチルールを適用するためのモデルを定義します。
 
-# Standard library imports
-import sqlite3  # SQLiteデータベースを操作するためのライブラリをインポートします。
 from datetime import datetime  # 日付時刻処理のためのライブラリをインポートします。
 
 # 型ヒントを使用するための型をインポートします。
 from typing import Dict, List, Optional, Tuple, Union
 
+# Standard library imports
+# Standard library imports
+import duckdb  # Changed from sqlite3
 import numpy as np  # 数値計算のためのNumPyライブラリをインポートします。
 
 # Third-party library imports
@@ -45,25 +46,54 @@ class MultiRule:
         Returns:
             bool: 重複がある場合True  # 重複が見つかった場合はTrueを返します。
         """
+        # DuckDB uses ? for placeholders usually, checking compat
         query = f"""
         SELECT COUNT(*) FROM {table_name}
-        WHERE item_code = %s AND batch = %s AND date = %s AND model = %s
+        WHERE item_code = ? AND batch = ? AND date = ? AND model = ?
         """
 
         for _, row in data.iterrows():  # データフレームの各行をループ処理します。
-            cursor = self.db_connection.cursor()  # データベースカーソルを作成します。
-            cursor.execute(
-                query,
-                (
-                    row["item_code"],  # SQLクエリを実行し、行のデータを渡します。
-                    row["batch"],
-                    row["date"],
-                    row["model"],
-                ),
-            )
-            count = cursor.fetchone()[0]  # クエリの結果からカウントを取得します。
-            if count > 0:  # 重複が見つかった場合
-                return True  # Trueを返します。
+            # DuckDB connection execute method can be used directly or via cursor
+            # If db_connection is duckdb connection object
+
+            # Using execute directly on connection is often preferred/supported in DuckDB python API
+            # But cursor() is also supported for compatibility
+            # Let's try to use cursor if available, else execute on connection
+
+            try:
+                # Assuming standard DBAPI cursor
+                if hasattr(self.db_connection, "cursor"):
+                    cursor = self.db_connection.cursor()
+                    cursor.execute(
+                        query,
+                        (
+                            row["item_code"],
+                            row["batch"],
+                            row["date"],
+                            row["model"],
+                        ),
+                    )
+                    result = cursor.fetchone()
+                else:
+                    # direct execute
+                    result = self.db_connection.execute(
+                        query,
+                        [
+                            row["item_code"],
+                            row["batch"],
+                            row["date"],
+                            row["model"],
+                        ],
+                    ).fetchone()
+
+                count = result[0]
+                if count > 0:
+                    return True
+            except Exception as e:
+                print(f"Error checking duplicates: {e}")
+                # Fallback or re-raise?
+                raise
+
         return False  # 重複がなかった場合はFalseを返します。
 
     def import_to_database(
@@ -105,18 +135,22 @@ class MultiRule:
                         data.columns
                     )  # カラム名をカンマ区切りで取得します。
                     # プレースホルダーを作成します。
-                    placeholders = ", ".join(["%s"] * len(data.columns))
+                    placeholders = ", ".join(["?"] * len(data.columns))
                     query = f"""
                     INSERT INTO {table_name} ({columns})
                     VALUES ({placeholders})
                     """
 
-                    cursor = (
-                        self.db_connection.cursor()
-                    )  # データベースカーソルを作成します。
-                    # データを一括挿入します。
-                    cursor.executemany(query, data.values.tolist())
-                    self.db_connection.commit()  # 変更をコミットします。
+                    if hasattr(self.db_connection, "executemany"):
+                        cursor = self.db_connection.cursor()
+                        cursor.executemany(query, data.values.tolist())
+                    else:
+                        # DuckDB supports executemany on connection too
+                        self.db_connection.executemany(query, data.values.tolist())
+
+                    # DuckDB typically auto-commits but explicit commit doesn't hurt if method exists
+                    if hasattr(self.db_connection, "commit"):
+                        self.db_connection.commit()
 
             return True  # インポートが成功した場合はTrueを返します。
 
@@ -124,15 +158,19 @@ class MultiRule:
             print(
                 "空のデータフレームが検出されました"
             )  # エラーメッセージを表示します。
-            self.db_connection.rollback()  # トランザクションをロールバックします。
+            # Rollback if possible
+            if hasattr(self.db_connection, "rollback"):
+                self.db_connection.rollback()
             return False  # Falseを返します。
-        except sqlite3.Error as e:  # SQLiteエラーが発生した場合
+        except duckdb.Error as e:  # DuckDBエラーが発生した場合
             print(f"データベースエラー: {str(e)}")  # エラーメッセージを表示します。
-            self.db_connection.rollback()  # トランザクションをロールバックします。
+            if hasattr(self.db_connection, "rollback"):
+                self.db_connection.rollback()
             return False  # Falseを返します。
         except ValueError as e:  # 値のエラーが発生した場合
             print(f"データ形式エラー: {str(e)}")  # エラーメッセージを表示します。
-            self.db_connection.rollback()  # トランザクションをロールバックします。
+            if hasattr(self.db_connection, "rollback"):
+                self.db_connection.rollback()
             return False  # Falseを返します。
 
     def apply_type_specific_rules(
@@ -220,8 +258,7 @@ class MultiRule:
             last_two = sd_conversions[-2:]
             results["2-2s"] = (
                 1
-                if (all(sd < -2 for sd in last_two) or
-                    all(sd > 2 for sd in last_two))
+                if (all(sd < -2 for sd in last_two) or all(sd > 2 for sd in last_two))
                 else 0
             )
             print(f"2-2s: {results['2-2s']} (last_two: {last_two})")
@@ -237,8 +274,7 @@ class MultiRule:
             last_four = sd_conversions[-4:]
             results["4-1s"] = (
                 1
-                if (all(sd < -1 for sd in last_four) or
-                    all(sd > 1 for sd in last_four))
+                if (all(sd < -1 for sd in last_four) or all(sd > 1 for sd in last_four))
                 else 0
             )
             print(f"4-1s: {results['4-1s']} (last_four: {last_four})")
@@ -249,8 +285,7 @@ class MultiRule:
             results["8x"] = (
                 1
                 if (
-                    all(sd > 0 for sd in last_eight) or
-                    all(sd < 0 for sd in last_eight)
+                    all(sd > 0 for sd in last_eight) or all(sd < 0 for sd in last_eight)
                 )
                 else 0
             )
@@ -300,8 +335,7 @@ class MultiRule:
         print(f"最新日付のインデックス: {latest_date_index}")
         print(f"最新日付: {date[latest_date_index]}")
 
-        for i, (value, sd_conv, qc_type, item_code, dye, b, m, d, meas, l
-                ) in enumerate(
+        for i, (value, sd_conv, qc_type, item_code, dye, b, m, d, meas, l) in enumerate(
             zip(
                 qc_data,
                 sd_conversions,
@@ -375,8 +409,7 @@ class MultiRule:
                     result["Judgment"] = "Fail"
                     # 違反したルールを抽出
                     error_rules = [
-                        rule for rule, violated in westgard_rules.items()
-                        if violated
+                        rule for rule, violated in westgard_rules.items() if violated
                     ]
                     if error_type:
                         error_rules.append("Type_error")
@@ -478,7 +511,7 @@ class MultiRule:
 
         # 正負それぞれの制限値を超える連続値をチェック
         for i in range(len(sd_conversions) - n_consecutive + 1):
-            consecutive_values = sd_conversions[i: i + n_consecutive]
+            consecutive_values = sd_conversions[i : i + n_consecutive]
 
             # 全ての値が+sd_limit以上
             if all(x >= sd_limit for x in consecutive_values):
@@ -557,8 +590,7 @@ def check_westgard_rules(
         if "SD_Conversion" in historical_data.columns:
             # 履歴データを日付順にソートしてSD変換値を取得
             historical_data_sorted = historical_data.sort_values("Date_Time")
-            historical_sd_conversions = historical_data_sorted["SD_Conversion"
-                                                               ].tolist()
+            historical_sd_conversions = historical_data_sorted["SD_Conversion"].tolist()
 
     # データを処理用に整形
     processed_data = {

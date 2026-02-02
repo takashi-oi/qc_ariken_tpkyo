@@ -2,9 +2,9 @@
 QCデータ処理モジュール
 """
 
-import sqlite3
 from typing import Any, Dict
 
+import duckdb
 import pandas as pd
 import streamlit as st
 
@@ -96,9 +96,7 @@ class QCDataProcessor:
 
         return results
 
-    async def process_and_display_westgard_results(self,
-                                                   data: ProcessedData
-                                                   ) -> None:
+    async def process_and_display_westgard_results(self, data: ProcessedData) -> None:
         """Westgardルールチェックの処理と表示"""
 
         async with get_db_connection(Config.DATABASE_PATH) as conn:
@@ -115,15 +113,15 @@ class QCDataProcessor:
                     if data_type == "PC":
                         try:
                             item_code = data.file_info["Item_Code"].iloc[0]
+                            # DuckDB uses ? for placeholders generally in DBAPI
                             historical_query = """
                             SELECT * FROM table_qc_pc
                             WHERE Item_Code = ?
                             ORDER BY Date_Time DESC
                             """
                             historical_data = (
-                                pd.read_sql_query(
-                                    historical_query, conn, params=(item_code,)
-                                )
+                                conn.execute(historical_query, [item_code])
+                                .df()
                                 .groupby("Type")
                                 .head(10)
                             )
@@ -152,16 +150,15 @@ class QCDataProcessor:
                                 ].iloc[0]
 
                                 # 重複除外
-                                existing_keys = pd.read_sql_query(
+                                existing_keys = conn.execute(
                                     """
                                     SELECT Item_Code, Date_Time, Batch, Model,
                                     Type, Lot_Number
                                     FROM table_qc_multi_rule
                                     WHERE Item_Code = ?
                                     """,
-                                    conn,
-                                    params=(item_code,),
-                                )
+                                    [item_code],
+                                ).df()
                                 merge_cols = [
                                     "Item_Code",
                                     "Date_Time",
@@ -170,8 +167,7 @@ class QCDataProcessor:
                                     "Type",
                                     "Lot_Number",
                                 ]
-                                if all(col in result_df.columns for
-                                       col in merge_cols):
+                                if all(col in result_df.columns for col in merge_cols):
                                     merged = result_df.merge(
                                         existing_keys,
                                         on=merge_cols,
@@ -185,12 +181,15 @@ class QCDataProcessor:
                                     new_records = result_df
 
                                 if not new_records.empty:
-                                    new_records.to_sql(
-                                        "table_qc_multi_rule",
-                                        conn,
-                                        if_exists="append",
-                                        index=False,
+                                    # DuckDB insert from df
+                                    # Note: table_qc_multi_rule might not exist if lazy init
+                                    # Assuming it exists or to_sql usage
+                                    # Since conn is DuckDBPyConnection, we can use sql or register df
+                                    conn.register("temp_new_records", new_records)
+                                    conn.execute(
+                                        "INSERT INTO table_qc_multi_rule SELECT * FROM temp_new_records"
                                     )
+                                    conn.unregister("temp_new_records")
 
                             # 2. table_qc_multi_ruleからデータ取得
                             multi_rule_query = """
@@ -199,9 +198,9 @@ class QCDataProcessor:
                             ORDER BY Date_Time DESC
                             LIMIT 100
                             """
-                            multi_rule_data = pd.read_sql_query(
-                                multi_rule_query, conn, params=(item_code,)
-                            )
+                            multi_rule_data = conn.execute(
+                                multi_rule_query, [item_code]
+                            ).df()
                             if multi_rule_data.empty:
                                 st.warning("table_qc_multi_ruleにデータがありません")
                                 return
@@ -229,11 +228,9 @@ class QCDataProcessor:
                                     chart_df = type_hist.copy()
                                     if "Date_Time" in chart_df.columns:
                                         chart_df["Date_Time"] = pd.to_datetime(
-                                            chart_df["Date_Time"],
-                                            errors="coerce"
+                                            chart_df["Date_Time"], errors="coerce"
                                         )
-                                        chart_df = chart_df.dropna(subset=[
-                                            "Date_Time"])
+                                        chart_df = chart_df.dropna(subset=["Date_Time"])
                                         chart_df = chart_df.sort_values(
                                             "Date_Time", ascending=True
                                         )
@@ -253,8 +250,7 @@ class QCDataProcessor:
                                             chart_plot_df = chart_df.set_index(
                                                 "Date_Time"
                                             )
-                                            chart_plot = chart_plot_df[
-                                                "SD_Conversion"]
+                                            chart_plot = chart_plot_df["SD_Conversion"]
                                             st.line_chart(chart_plot)
 
                                             # データ一覧表示（最大10レコード）
@@ -277,8 +273,7 @@ class QCDataProcessor:
                                                 for col in display_columns
                                                 if col in chart_df.columns
                                             ]
-                                            chart_df = chart_df[
-                                                display_columns]
+                                            chart_df = chart_df[display_columns]
                                             sort_cols = ["Date_Time"]
                                             if "Batch" in chart_df.columns:
                                                 sort_cols.append("Batch")
@@ -291,7 +286,7 @@ class QCDataProcessor:
                                             st.dataframe(
                                                 chart_df,
                                                 use_container_width=True,
-                                                hide_index=True
+                                                hide_index=True,
                                             )
                                         else:
                                             st.info(
@@ -356,7 +351,7 @@ class QCDataProcessor:
                             st.markdown("### 登録終了しました")
 
                         except (
-                            sqlite3.Error,
+                            duckdb.Error,
                             pd.errors.EmptyDataError,
                             ValueError,
                             TypeError,

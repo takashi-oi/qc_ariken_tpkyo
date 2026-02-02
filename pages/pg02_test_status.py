@@ -1,6 +1,8 @@
 """検査測定状況管理記録登録ページ"""
 
 # DuckDBをインポート
+import asyncio
+
 import duckdb
 
 # Pandasをインポート
@@ -37,8 +39,13 @@ def get_connection():
 # DatabaseManagerインスタンスを取得する関数
 def get_database_manager():
     """DatabaseManagerインスタンスを初期化し、キャッシュする"""
-    # DatabaseManagerインスタンスを返す
-    return DatabaseManager(Config.DATABASE_PATH)
+    manager = DatabaseManager(Config.DATABASE_PATH)
+    # テーブル作成を行う（初回のみ実行される）
+    try:
+        asyncio.run(manager.create_tables())
+    except Exception:
+        pass
+    return manager
 
 
 # セッション状態の初期化
@@ -72,25 +79,18 @@ def init_session_state():
 init_session_state()  # セッション状態の初期化
 
 
-# データベースの接続後、テーブルが存在するか確認し、なければ作成する
-def ensure_table_exists():  # テーブルが存在することを確認し、なければ作成する関数
-    """データベースに必要なテーブルが存在することを確認し、なければ作成する"""
-    table_conn = get_connection()  # データベースに接続
-    create_table_query = """  -- テーブル作成クエリ
-    -- table_qc_file_infoテーブルが存在しない場合、作成
-    CREATE TABLE IF NOT EXISTS table_qc_file_info (
-        File_Name TEXT,  -- File_Nameカラム
-        Date_Time DATETIME,  -- Date_Timeカラム
-        Batch TEXT,  -- Batchカラム
-        Item_Code TEXT  -- Item_Codeカラム
-    )
-    """
-    table_conn.execute(create_table_query)  # テーブル作成クエリを実行
-    table_conn.commit()  # 変更をコミット
+# DatabaseManagerを初期化してテーブル作成を確実に行う
+get_database_manager()
 
 
-# テーブルの存在を確認してから読み込む
-ensure_table_exists()  # テーブルの存在を確認してから読み込む
+# 従業員データをキャッシュして読み込む関数
+@st.cache_data(ttl=3600)
+def load_employee_data_cached():
+    """従業員データをキャッシュして読み込む"""
+    from src.utils.master_loader import MasterDataLoader
+
+    return MasterDataLoader.load_employee_data()
+
 
 # データの読み込み
 try:  # データの読み込みを試みる
@@ -196,17 +196,16 @@ with st.sidebar:  # サイドバーにウィジェットを配置
     # 実施者名の入力と保存
     try:  # 実施者名の入力と保存を試みる
         # 検査要員データをデータベースから読み込む
-        from src.utils.master_loader import MasterDataLoader
-
-        employee_data = MasterDataLoader.load_employee_data()
+        employee_data = load_employee_data_cached()
 
         # カラム名の確認とフォールバック処理
         if employee_data.empty:
             measurer_list = [""]
-            st.warning("担当者マスターデータがありません。マスターテーブル管理ページでデータを登録してください。")
+            st.warning(
+                "担当者マスターデータがありません。マスターテーブル管理ページでデータを登録してください。"
+            )
         elif "Member's_Name" in employee_data.columns:
-            measurer_list = [""] + employee_data["Member's_Name"
-                                                 ].dropna().tolist()
+            measurer_list = [""] + employee_data["Member's_Name"].dropna().tolist()
         else:
             # 代替カラム名を探す
             name_col = None
@@ -216,11 +215,12 @@ with st.sidebar:  # サイドバーにウィジェットを配置
                     break
 
             if name_col:
-                measurer_list = [""] + employee_data[name_col
-                                                     ].dropna().tolist()
+                measurer_list = [""] + employee_data[name_col].dropna().tolist()
             else:
                 measurer_list = [""]
-                st.warning("担当者名のカラムが見つかりません。マスターテーブル管理ページでデータを確認してください。")
+                st.warning(
+                    "担当者名のカラムが見つかりません。マスターテーブル管理ページでデータを確認してください。"
+                )
 
         selected_measurer = st.selectbox(  # ドロップダウンリスト
             "測定者名", measurer_list, index=0

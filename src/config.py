@@ -12,8 +12,8 @@ class Config:
     QC_DATABASE_PATH = "db_folder/qc_data_base.db"
     # マスタデータ用（SQLite3）
     MASTER_DATABASE_PATH = "db_folder/master_data.db"
-    # 試薬管理データ用（SQLite3）
-    REAGENT_DATABASE_PATH = "db_folder/reagent.db"
+    # 試薬管理データ用（SQLite3） - マスタデータと統合
+    REAGENT_DATABASE_PATH = MASTER_DATABASE_PATH
     # 後方互換性のため（QCデータ用）
     DATABASE_PATH = QC_DATABASE_PATH
     MASTER_FOLDER = "master_folder"
